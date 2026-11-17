@@ -16,6 +16,8 @@ export function createHud(doc) {
   const speedEl = el('speed');
   const clockEl = el('clock');
   const objectiveEl = el('objective');
+  const timerEl = el('timer');
+  const fareEl = el('fare');
   const hintEl = el('hint');
   const toastEl = el('toast');
   const vignette = el('vignette');
@@ -73,10 +75,24 @@ export function createHud(doc) {
       mctx.strokeStyle = '#ffd21f';
       mctx.beginPath(); mctx.arc(px(state.marker.x), pz(state.marker.z), 8, 0, Math.PI * 2); mctx.stroke();
     }
+    // Taxi fare marker (green) or its destination (green ring).
+    if (state.fareMarker) {
+      mctx.fillStyle = '#39d353';
+      mctx.beginPath(); mctx.arc(px(state.fareMarker.x), pz(state.fareMarker.z), 5, 0, Math.PI * 2); mctx.fill();
+      if (state.fareMarker.kind === 'dest') {
+        mctx.strokeStyle = '#39d353';
+        mctx.beginPath(); mctx.arc(px(state.fareMarker.x), pz(state.fareMarker.z), 8, 0, Math.PI * 2); mctx.stroke();
+      }
+    }
     // Police blips.
     mctx.fillStyle = '#3a86ff';
     for (const c of state.cruisers) {
       mctx.beginPath(); mctx.arc(px(c.x), pz(c.z), 3, 0, Math.PI * 2); mctx.fill();
+    }
+    // Roadblocks (blue squares).
+    mctx.fillStyle = '#3a86ff';
+    for (const b of state.roadblocks || []) {
+      mctx.fillRect(px(b.x) - 3, pz(b.z) - 3, 6, 6);
     }
     // Player arrow (north up, rotated by heading).
     mctx.save();
@@ -106,6 +122,14 @@ export function createHud(doc) {
     const mins = 18 * 60 + 42 + Math.floor(state.time / 10);
     clockEl.textContent = `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
     objectiveEl.textContent = state.objective;
+    if (state.timer != null) {
+      timerEl.textContent = `⏱ ${Math.ceil(state.timer)}s`;
+      timerEl.classList.remove('hidden');
+    } else timerEl.classList.add('hidden');
+    if (state.fare) {
+      fareEl.textContent = `${state.fare.text} — ${state.fare.timer}s`;
+      fareEl.classList.remove('hidden');
+    } else fareEl.classList.add('hidden');
     hintEl.textContent = state.hint;
     dropsEl.textContent = `Cash drops ${state.dropsGot}/${CASH_DROP_COUNT}`;
     radioEl.textContent = state.muted ? 'MUTED' : 'SOLMAR FM 88.1 — synthwave';

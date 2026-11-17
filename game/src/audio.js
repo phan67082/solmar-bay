@@ -44,16 +44,23 @@ export function createAudio() {
       sirenOsc.connect(sirenGain);
       sirenGain.connect(master);
       sirenOsc.start();
-      // Synthwave loop: 8-step bass + arpeggio, scheduled ahead.
-      const bassNotes = [55, 55, 65.41, 49, 55, 55, 73.42, 82.41];
-      const arpNotes = [220, 261.63, 329.63, 440, 329.63, 261.63, 196, 164.81];
+      // Synthwave loop: 16-step bass (Am – F – C – G), arpeggio, a soft
+      // pad chord every four steps and a hat tick on the offbeat.
+      const bassNotes = [55, 55, 55, 55, 43.65, 43.65, 43.65, 43.65, 65.41, 65.41, 65.41, 65.41, 49, 49, 49, 49];
+      const arpNotes = [220, 261.63, 329.63, 440, 523.25, 440, 329.63, 261.63, 174.61, 220, 261.63, 349.23, 440, 349.23, 261.63, 220];
+      const padChords = [[220, 261.63, 329.63], [174.61, 220, 261.63], [196, 246.94, 293.66], [196, 246.94, 293.66]];
       musicTimer = window.setInterval(() => {
         if (!ctx || ctx.state !== 'running') return;
         const t = ctx.currentTime;
-        const i = step % 8;
+        const i = step % 16;
         blip(bassNotes[i], t, 0.22, 'triangle', 0.5, musicGain);
-        blip(arpNotes[(step * 3) % 8], t + 0.11, 0.12, 'square', 0.12, musicGain);
-        if (step % 8 === 0) blip(110, t, 0.5, 'sine', 0.25, musicGain);
+        blip(arpNotes[(step * 3) % 16], t + 0.11, 0.12, 'square', 0.1, musicGain);
+        if (step % 4 === 0) blip(110, t, 0.3, 'sine', 0.22, musicGain);
+        if (step % 2 === 1) noise(t, 0.03, 0.05, 8000);
+        if (step % 4 === 0) {
+          const chord = padChords[(step / 4) % 4];
+          for (const f of chord) blip(f, t, 0.9, 'triangle', 0.05, musicGain);
+        }
         step += 1;
       }, 240);
     } catch {
@@ -132,6 +139,23 @@ export function createAudio() {
     missionFail() {
       if (!ensure()) return;
       [330, 262, 196].forEach((f, i) => blip(f, ctx.currentTime + i * 0.12, 0.25, 'sawtooth', 0.2));
+    },
+    // A fare hops in: a cheerful two-note chime.
+    taxi() {
+      if (!ensure()) return;
+      blip(1046, ctx.currentTime, 0.1, 'sine', 0.28);
+      blip(1568, ctx.currentTime + 0.09, 0.16, 'sine', 0.28);
+    },
+    // An objective ticks off: a short rising blip.
+    objective() {
+      if (!ensure()) return;
+      blip(659, ctx.currentTime, 0.09, 'triangle', 0.28);
+      blip(988, ctx.currentTime + 0.08, 0.14, 'triangle', 0.28);
+    },
+    // A cash drop or fare payout: a coin arpeggio.
+    cash() {
+      if (!ensure()) return;
+      [1318, 1568, 2093].forEach((f, i) => blip(f, ctx.currentTime + i * 0.06, 0.12, 'sine', 0.26));
     },
   };
 }

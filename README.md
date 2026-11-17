@@ -16,10 +16,15 @@ Explore a 12×12-block city on foot and by car: a beachfront boulevard
 along the sea, a marina and port with cranes, a central plaza with a
 fountain, downtown towers, a hillside district, palms, neon signs and
 golden-hour light. Steal parked cars, drive through traffic that stops
-at lights, pick up taxi fares, find 20 hidden cash drops, and clear the
+at lights, pick up taxi fares in a cab (stop by a waving passenger and
+beat the clock for a tip), find 20 hidden cash drops, and clear the
 stunt jump over the marina gap. Six story missions run from a tutorial
-drive to a three-stage finale at the port. Wanted stars bring police
-cruisers; get busted or wasted and you retry from the checkpoint.
+drive to a three-stage finale at the port, with stage objectives,
+timers, failure and retry from the mission checkpoint. Wanted stars
+bring police cruisers, foot officers and roadblocks; get busted or
+wasted and you retry from the checkpoint with your cash kept. Rival
+crews hold two free-roam hotspots, take cover when hurt, and flee at
+low health.
 
 ## How to play
 
@@ -41,8 +46,15 @@ cruisers; get busted or wasted and you retry from the checkpoint.
 | M | Mute |
 | T | Restart |
 
-Progress, cash and unlocked missions save to the browser's local storage
-(Continue on the title screen, or Save in the pause menu).
+Drive a taxi (one is always parked near the plaza) to pick up fares:
+a waving passenger appears nearby — stop beside them, then reach the
+green marker before the timer ends for the fare plus a speed tip.
+
+Progress, cash, unlocked missions, collected cash drops and taxi
+earnings save to the browser's local storage (Continue on the title
+screen, Save in the pause menu, or automatically when a mission
+completes). Getting busted or wasted retries from the last mission
+checkpoint — your cash is kept.
 
 ## How to run
 
@@ -89,8 +101,9 @@ game/
     pedestrians.js  walkers and taxi fares
     police.js       wanted level, pursuit, busted/wasted
     combat.js       weapons, shooting, enemy behaviour
-    missions.js     the story, six missions, objectives
+    missions.js     the story, six missions, objectives, timers, failure
     collectibles.js cash drops and the stunt jump
+    taxi.js         taxi fares: hailing, pickup, destination timer, tips
     hud.js          DOM HUD and minimap canvas
     save.js         local-storage save
     render.js       3D scene, lighting, camera rigs

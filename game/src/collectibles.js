@@ -72,10 +72,31 @@ export function createCollectibles(rng, scene, city) {
     stuntDone = false;
   }
 
+  // Indices of the drops already taken, for the save file.
+  function takenIndices() {
+    const out = [];
+    drops.forEach((d, i) => { if (d.taken) out.push(i); });
+    return out;
+  }
+
+  // Re-apply a saved set of taken drops (same seed, same order).
+  function restoreTaken(indices) {
+    if (!Array.isArray(indices)) return;
+    for (const i of indices) {
+      const d = drops[i];
+      if (d) {
+        d.taken = true;
+        d.mesh.visible = false;
+      }
+    }
+  }
+
   return {
     drops,
     update,
     reset,
+    takenIndices,
+    restoreTaken,
     get collectedCount() { return drops.filter((d) => d.taken).length; },
   };
 }

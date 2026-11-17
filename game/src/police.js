@@ -1,22 +1,52 @@
-// Wanted level and police pursuit. 0–5 stars: at one star a patrol car
-// follows; more stars mean more cruisers, faster and more aggressive.
-// Wanted rises for stealing a car in view, hitting pedestrians, shooting
-// and killing officers; it fades when the player breaks line of sight and
-// stays hidden. Caught slow and boxed in, or at zero health, the game
-// ends busted or wasted (the screens live in main.js).
+// Wanted level and police pursuit. 0–5 stars: one star brings a patrol
+// car that follows; two add a second cruiser and foot officers who chase
+// the player on foot; three and up add roadblocks, more cruisers and
+// aggressive ramming. Wanted rises for stealing a car in view, hitting
+// pedestrians, shooting, killing officers and speeding through a
+// roadblock; it fades when the player breaks line of sight and stays
+// hidden — faster near the player's own garage. Caught slow and boxed
+// in, or grabbed on foot by an officer, the game ends busted (zero
+// health ends it wasted; the screens live in main.js).
+import * as THREE from 'three';
 import { CAR_TYPES } from './config.js';
 import { makeCarMesh, driveCar, pursueSteer } from './vehicles.js';
+
+const GARAGE = { x: 150, z: 210 };
+
+function makeOfficerMesh() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.35), new THREE.MeshLambertMaterial({ color: 0x1c3a6e }));
+  body.position.y = 1.05;
+  body.castShadow = true;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshLambertMaterial({ color: 0xe8b88a }));
+  head.position.y = 1.68;
+  g.add(head);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.65, 0.3), new THREE.MeshLambertMaterial({ color: 0x14181f }));
+  legs.position.y = 0.33;
+  g.add(legs);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x101418 }));
+  cap.position.y = 1.9;
+  g.add(cap);
+  return g;
+}
 
 export function createPolice(scene) {
   let stars = 0;
   let hiddenT = 0;
   let boxedT = 0;
+  let roadblocksEnabled = true;
+  let ramCooldown = 0;
   const cruisers = [];
+  const officers = [];
+  const roadblocks = []; // { x, z, cars: [mesh, mesh], tripped }
 
   function setStars(n) {
     stars = Math.max(0, Math.min(5, n));
     hiddenT = 0;
     boxedT = 0;
+    if (stars < 2) clearOfficers();
+    if (stars < 3) clearRoadblocks();
   }
 
   function addStars(n) {
@@ -43,10 +73,88 @@ export function createPolice(scene) {
     return best;
   }
 
+  function spawnOfficer(x, z) {
+    const mesh = makeOfficerMesh();
+    mesh.position.set(x, 0, z);
+    scene.add(mesh);
+    const officer = { x, z, hp: 50, mesh, grabT: 0, dead: false };
+    officers.push(officer);
+    return officer;
+  }
+
+  function clearOfficers() {
+    for (const o of officers) scene.remove(o.mesh);
+    officers.length = 0;
+  }
+
+  function removeOfficer(o) {
+    scene.remove(o.mesh);
+    const i = officers.indexOf(o);
+    if (i >= 0) officers.splice(i, 1);
+  }
+
+  // A roadblock: two parked cruisers across the road ahead of the player.
+  // They are static meshes, not pursuing cars, so the player must steer
+  // around them or take the hit.
+  function spawnRoadblock(px, pz, heading) {
+    const ax = px + Math.sin(heading) * 70;
+    const az = pz + Math.cos(heading) * 70;
+    const snap = (v) => Math.round((v + 360) / 60) * 60 - 360;
+    const bx = snap(ax);
+    const bz = snap(az);
+    if (Math.hypot(bx - px, bz - pz) < 40) return null;
+    const across = Math.abs(bx - ax) > Math.abs(bz - az) ? 'z' : 'x';
+    const cars = [];
+    for (const off of [-2.6, 2.6]) {
+      const mesh = makeCarMesh('police', CAR_TYPES.police.colours[0]);
+      const cx = across === 'x' ? bx : bx + off;
+      const cz = across === 'x' ? bz + off : bz;
+      mesh.position.set(cx, 0, cz);
+      mesh.rotation.y = across === 'x' ? Math.PI / 2 : 0;
+      scene.add(mesh);
+      cars.push({ x: cx, z: cz, mesh });
+    }
+    const block = { x: bx, z: bz, cars, tripped: false };
+    roadblocks.push(block);
+    return block;
+  }
+
+  function clearRoadblocks() {
+    for (const b of roadblocks) for (const c of b.cars) scene.remove(c.mesh);
+    roadblocks.length = 0;
+  }
+
+  // Fists or a pistol round at (ox, oz) along (dx, dz): an officer in the
+  // way goes down. Returns the officer hit, if any.
+  function hitOfficer(ox, oz, dx, dz, range, dmg, isPunch) {
+    for (const o of officers) {
+      if (o.dead) continue;
+      const ex = o.x - ox;
+      const ez = o.z - oz;
+      const d = Math.hypot(ex, ez);
+      if (d > range) continue;
+      if (isPunch) {
+        o.hp -= dmg;
+        if (o.hp <= 0) { o.dead = true; removeOfficer(o); return o; }
+        return o;
+      }
+      const dot = (ex * dx + ez * dz) / (d || 1);
+      if (dot < 0.985) continue;
+      o.hp -= dmg;
+      if (o.hp <= 0) { o.dead = true; removeOfficer(o); }
+      return o;
+    }
+    return null;
+  }
+
   // Drive the cruisers after the player with pure pursuit at a capped
-  // speed. Returns 'busted' when the player is boxed in slow, else null.
+  // speed that rises with the wanted level. Returns { busted, rammed }:
+  // busted when the player is boxed in slow or grabbed by an officer,
+  // rammed when a cruiser just slammed the player's car.
   function update(dt, player, collide) {
-    const want = stars === 0 ? 0 : Math.min(stars + 1, 4);
+    if (ramCooldown > 0) ramCooldown -= dt;
+    // Cruiser count scales with stars: 1 star patrols, 5 stars floods.
+    const want = stars === 0 ? 0 : Math.min(stars + 1, 5);
     while (cruisers.length < want) {
       const a = Math.random() * Math.PI * 2;
       spawnCruiser(player.x + Math.cos(a) * 70, player.z + Math.sin(a) * 70);
@@ -56,27 +164,74 @@ export function createPolice(scene) {
       scene.remove(c.mesh);
     }
     let nearest = Infinity;
+    let rammed = false;
     for (const c of cruisers) {
       const d = Math.hypot(c.x - player.x, c.z - player.z);
       nearest = Math.min(nearest, d);
-      const cruise = Math.min(30, 16 + stars * 3);
+      // Three stars and up: faster, and they aim to hit the player's car.
+      const cruise = stars >= 3 ? Math.min(34, 18 + stars * 3) : Math.min(30, 16 + stars * 3);
       const { throttle, steer } = pursueSteer(c, player.x, player.z, cruise);
       driveCar(c, throttle, steer, false, dt, collide);
+      if (stars >= 3 && player.inCar && player.car && d < 4 && ramCooldown <= 0) {
+        rammed = true;
+        ramCooldown = 1;
+        player.car.damage += 5;
+        player.car.speed *= 0.7;
+      }
     }
-    // Wanted fades when no cruiser is near the player for a while.
+    // Foot officers at two stars and up, only while the player is on foot.
+    if (stars >= 2 && !player.inCar) {
+      const wantOfficers = Math.min(stars - 1, 2);
+      while (officers.length < wantOfficers) {
+        const a = Math.random() * Math.PI * 2;
+        spawnOfficer(player.x + Math.cos(a) * 25, player.z + Math.sin(a) * 25);
+      }
+      for (const o of officers) {
+        const dx = player.x - o.x;
+        const dz = player.z - o.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const speed = 5.5;
+        o.x += (dx / d) * speed * dt;
+        o.z += (dz / d) * speed * dt;
+        o.mesh.position.set(o.x, 0, o.z);
+        o.mesh.rotation.y = Math.atan2(dx, dz);
+        if (d < 1.6) {
+          o.grabT += dt;
+          if (o.grabT > 1.5) return { busted: true, rammed };
+        } else o.grabT = 0;
+      }
+    } else if (officers.length > 0 && (stars < 2 || player.inCar)) {
+      clearOfficers();
+    }
+    // Roadblocks at three stars and up: keep two ahead of the player.
+    if (stars >= 3 && roadblocksEnabled) {
+      for (const b of roadblocks) {
+        if (Math.hypot(b.x - player.x, b.z - player.z) > 160) {
+          for (const c of b.cars) scene.remove(c.mesh);
+          roadblocks.splice(roadblocks.indexOf(b), 1);
+        }
+      }
+      while (roadblocks.length < 2) {
+        if (!spawnRoadblock(player.x, player.z, player.heading)) break;
+      }
+    }
+    // Wanted fades when no cruiser is near the player for a while —
+    // faster near the player's own garage, where the heat dies down.
     if (stars > 0) {
+      const nearGarage = Math.hypot(player.x - GARAGE.x, player.z - GARAGE.z) < 40;
+      const fadeAfter = nearGarage ? 6 : 15;
       if (nearest > 45) {
         hiddenT += dt;
-        if (hiddenT > 15) { stars -= 1; hiddenT = 0; }
+        if (hiddenT > fadeAfter) { stars -= 1; hiddenT = 0; }
       } else hiddenT = 0;
     }
     // Busted: boxed in by cruisers while slow.
     const playerSpeed = player.inCar ? Math.abs(player.car ? player.car.speed : 0) : 0;
     if (stars > 0 && nearest < 4 && playerSpeed < 2) {
       boxedT += dt;
-      if (boxedT > 3) return 'busted';
+      if (boxedT > 3) return { busted: true, rammed };
     } else boxedT = 0;
-    return null;
+    return { busted: false, rammed };
   }
 
   // Drop cruisers beyond `n` (screenshot scenes keep a staged formation).
@@ -90,11 +245,15 @@ export function createPolice(scene) {
   return {
     get stars() { return stars; },
     cruisers,
+    officers,
+    roadblocks,
     setStars,
     addStars,
     spawnCruiser,
     trimCruisers,
     nearestCruiserDistance,
+    hitOfficer,
+    setRoadblocksEnabled(v) { roadblocksEnabled = v; if (!v) clearRoadblocks(); },
     update,
   };
 }

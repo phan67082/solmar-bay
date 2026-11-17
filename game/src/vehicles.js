@@ -191,7 +191,9 @@ export function createTraffic(rng, city, scene) {
   }
 
   for (let i = 0; i < PARKED_COUNT; i += 1) {
-    const type = pick(rng, types);
+    // The first parked car is always a taxi (the taxi rank): fares need
+    // a cab the player can actually find.
+    const type = i === 0 ? 'taxi' : pick(rng, types);
     const spec = CAR_TYPES[type];
     const axis = rng() < 0.5 ? 'x' : 'z';
     const line = pick(rng, lines.slice(1, 12));

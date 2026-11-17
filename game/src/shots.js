@@ -56,14 +56,16 @@ export function stageShot(name, game) {
     game.setScreen(SCREEN_PLAY);
     game.placePlayerInCar('sedan', -363, -120, 0);
     game.police.setStars(0);
-    autopilotDrive(game, -363, 140, 12, 6);
+    autopilotDrive(game, -363, 140, 12, 9);
     const p = game.player;
-    // Camera east of the car, looking west-southwest down the boulevard:
-    // the car is large in frame, the sea and palms fill the background,
-    // and the streetlights stay out of the lens.
+    // Camera over the road itself, trailing the car and looking down the
+    // boulevard: the car is large in frame, the beach, sea and palms fill
+    // the background, and the streetlights stay out of the lens. (The old
+    // camera sat 18 m east of the car, inside the building row, with a
+    // streetlight pole dead in the sightline.)
     game.stageCamera(
-      { x: p.x + 18, y: 5, z: p.z - 10 },
-      { x: p.x - 6, y: 1.5, z: p.z + 22 },
+      { x: p.x + 3, y: 7, z: p.z - 12 },
+      { x: p.x - 3, y: 1.5, z: p.z + 24 },
     );
     return;
   }
@@ -71,6 +73,9 @@ export function stageShot(name, game) {
   game.setScreen(SCREEN_PLAY);
   game.placePlayerInCar('sports', -357, 60, Math.PI);
   game.police.setStars(3);
+  // Roadblocks stay off in the staged chase: they would sit on the road
+  // ahead and block the autopilot's line.
+  game.police.setRoadblocksEnabled(false);
   // Two cruisers right behind the player before the drive starts.
   game.police.spawnCruiser(-357, 74);
   game.police.spawnCruiser(-354, 88);
