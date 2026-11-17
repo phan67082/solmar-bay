@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solmar Bay — Make GTA 6</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a120c; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #f5efe4; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hidden { display: none !important; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { background: rgba(20, 16, 12, 0.72); border: 1px solid rgba(245, 239, 228, 0.25); border-radius: 8px; padding: 10px 14px; }
+  #stats { position: absolute; top: 14px; left: 14px; min-width: 240px; }
+  .bar { height: 12px; background: rgba(255,255,255,0.15); border-radius: 6px; overflow: hidden; margin: 3px 0 7px; }
+  .bar > div { height: 100%; border-radius: 6px; }
+  #health-fill { background: #e5534b; width: 100%; }
+  #armour-fill { background: #4f7fd9; width: 0%; }
+  #cash { font-size: 20px; font-weight: 700; color: #7dd87d; }
+  #stars { font-size: 22px; letter-spacing: 3px; color: #ffd21f; }
+  #stars.hot { text-shadow: 0 0 10px #ff5a2a; }
+  #minimap { position: absolute; top: 14px; right: 14px; border: 2px solid rgba(245,239,228,0.5); border-radius: 6px; background: #1c2f42; }
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 600; text-align: center; max-width: 46%; }
+  #clock { position: absolute; top: 248px; right: 16px; font-size: 15px; color: #cbb98f; text-align: right; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+  #radio { position: absolute; top: 272px; right: 16px; font-size: 12px; color: #cbb98f; text-align: right; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+  #drops { position: absolute; top: 294px; right: 16px; font-size: 12px; color: #7dd87d; text-align: right; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+  #weapon-box { position: absolute; bottom: 16px; right: 16px; text-align: right; font-size: 18px; }
+  #speed { font-size: 30px; font-weight: 800; }
+  #hint { position: absolute; bottom: 16px; left: 16px; font-size: 14px; color: #ffe9a8; }
+  #toast { position: absolute; top: 110px; left: 50%; transform: translateX(-50%); font-size: 19px; font-weight: 700; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 20, 20, 0.55) 100%); }
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(12, 8, 5, 0.55); }
+  .card { background: rgba(20, 16, 12, 0.88); border: 1px solid rgba(255, 180, 94, 0.5); border-radius: 12px; padding: 18px 30px; max-width: 620px; max-height: 94vh; overflow-y: auto; text-align: center; }
+  .card h1 { margin: 0 0 4px; font-size: 44px; letter-spacing: 4px; color: #ffb45e; text-shadow: 0 3px 18px rgba(255, 140, 40, 0.6); }
+  .card h2 { margin: 0 0 12px; font-size: 30px; color: #ffb45e; }
+  .card p { color: #cbb98f; line-height: 1.5; margin: 8px 0; }
+  .card .controls { font-size: 13px; text-align: left; columns: 2; column-gap: 28px; margin: 14px 0; }
+  .card button { pointer-events: auto; display: block; width: 100%; margin: 6px 0; padding: 10px; font-size: 16px; font-weight: 700; color: #1a120c; background: #ffb45e; border: none; border-radius: 8px; cursor: pointer; }
+  .card button:hover { background: #ffc98a; }
+  .card button:disabled { background: #6b6258; color: #cbb98f; cursor: default; }
+  .card button.secondary { background: #3a3a40; color: #f5efe4; }
+  #mission-list button { font-size: 14px; font-weight: 600; padding: 8px; text-align: left; }
+  .screen, .card button { pointer-events: auto; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game" aria-label="Solmar Bay: an open-world city game. Walk with W A S D, drive with W A S D, steal cars with E."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+<div id="vignette"></div>
+
+<div id="hud" class="hidden">
+  <div id="stats" class="panel">
+    <div>HEALTH</div><div class="bar"><div id="health-fill"></div></div>
+    <div>ARMOUR</div><div class="bar"><div id="armour-fill"></div></div>
+    <div id="cash">$500</div>
+    <div id="stars">☆☆☆☆☆</div>
+  </div>
+  <canvas id="minimap" width="220" height="220"></canvas>
+  <div id="objective" class="panel">Free roam — explore Solmar Bay</div>
+  <div id="clock">18:42</div>
+  <div id="radio">SOLMAR FM 88.1 — synthwave</div>
+  <div id="drops">Cash drops 0/20</div>
+  <div id="weapon-box"><div id="weapon">Fists</div><div id="speed"></div></div>
+  <div id="hint"></div>
+  <div id="toast" class="hidden"></div>
+</div>
+
+<div id="title-screen" class="screen">
+  <div class="card">
+    <h1>SOLMAR BAY</h1>
+    <p>Jace Moreno is out of prison and back in his home city. Tess Alvarez runs jobs from her garage. Councillor Dario Vane owns the port — and the police captain. Take the city back, one job at a time.</p>
+    <div class="controls">
+      <div>WASD / arrows — move / drive</div><div>Shift — run</div>
+      <div>Mouse drag — camera</div><div>Space — jump / handbrake</div>
+      <div>E — enter / exit car</div><div>F — punch</div>
+      <div>Click — shoot pistol</div><div>1 / 2 — fists / pistol</div>
+      <div>R — reload</div><div>H — horn</div>
+      <div>L — headlights</div><div>C — look back</div>
+      <div>P / Esc — pause</div><div>M — mute</div>
+      <div>T — restart</div>
+    </div>
+    <button id="btn-new">New Game</button>
+    <button id="btn-continue" class="secondary">Continue</button>
+    <div id="mission-list"></div>
+  </div>
+</div>
+
+<div id="pause-screen" class="screen hidden">
+  <div class="card">
+    <h2>Paused</h2>
+    <p>The bay will wait for you.</p>
+    <button id="btn-resume">Resume</button>
+    <button id="btn-restart" class="secondary">Restart mission</button>
+    <button id="btn-save" class="secondary">Save game</button>
+    <button id="btn-mute" class="secondary">Mute (M)</button>
+    <button id="btn-quit" class="secondary">Quit to title</button>
+  </div>
+</div>
+
+<div id="busted-screen" class="screen hidden">
+  <div class="card">
+    <h2>BUSTED</h2>
+    <p>The Solmar Bay police have you. Vane's captain will enjoy this.</p>
+    <button id="btn-retry">Retry from the last checkpoint</button>
+  </div>
+</div>
+
+<div id="wasted-screen" class="screen hidden">
+  <div class="card">
+    <h2>WASTED</h2>
+    <p>Jace is down. The bay doesn't wait for anyone.</p>
+    <button id="btn-retry-wasted">Retry from the last checkpoint</button>
+  </div>
+</div>
+
+<div id="complete-screen" class="screen hidden">
+  <div class="card">
+    <h2>KING OF THE BAY</h2>
+    <p>Vane is finished. Solmar Bay is yours, Jace.</p>
+    <button id="btn-complete">Back to title</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
