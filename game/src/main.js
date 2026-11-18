@@ -709,7 +709,7 @@ function stepSim(dt, inputOverride, ambient = false) {
   // Audio follows the world.
   const nearestPolice = police.nearestCruiserDistance(player.x, player.z);
   audio.setSiren(police.stars > 0, nearestPolice);
-  audio.setEngine(player.inCar && player.car ? Math.abs(player.car.speed) / player.car.spec.topSpeed : 0, player.inCar);
+  audio.setEngine(player.inCar && player.car ? Math.abs(player.car.speed) / player.car.spec.topSpeed : 0, player.inCar, player.inCar && player.car && player.car.type === 'motorcycle' ? 1.6 : 1);
 
   // Headlights: one spotlight follows the player's car.
   if (player.inCar && player.car && player.car.headlights) {
@@ -773,6 +773,14 @@ function stepPlayer(dt, inputOverride) {
       audio.crash();
       player.flash = Math.max(player.flash, 0.25);
       peds.scare(car.x, car.z, 10);
+    }
+    // A hard crash throws the rider off the bike — no roof, no seatbelt.
+    if (car.type === 'motorcycle' && impact > 9) {
+      exitCar();
+      playerMesh.position.set(player.x, player.y, player.z);
+      playerMesh.visible = true;
+      hud.toast('Knocked off the bike!');
+      return;
     }
     player.x = car.x;
     player.z = car.z;
@@ -953,6 +961,7 @@ function updateHud(dt) {
   const nearHeli = heli && !heli.isFlying && heli.nearPad(player.x, player.z, 6) && !player.inCar;
   let hint = '';
   if (heli && heli.isFlying) hint = 'W/S fly · A/D turn · Space climb · Shift descend · E land & exit';
+  else if (player.inCar && player.car && player.car.type === 'motorcycle') hint = 'W/S ride · A/D lean · Space handbrake · H horn · L lights · E hop off';
   else if (player.inCar) hint = 'W/S drive · A/D steer · Space handbrake · H horn · L lights · E exit';
   else if (nearCar) hint = `Press E to take the ${nearCar.spec.name}`;
   else if (combat.weapon !== 'fists' && combat.ammo === 0) hint = 'Press R to reload';
@@ -1214,6 +1223,12 @@ window.__solmar = {
   openMap, closeMap, openGarage, closeGarage,
   get checkpoint() { return checkpoint; },
   retryFromCheckpoint,
+  // Fixed-step driver for the play-test tooling: step the sim with an
+  // autopilot override while the game is paused, so a drive can be
+  // steered deterministically (a blind keyboard hold at 100+ km/h
+  // runs any vehicle into a building).
+  stepSim,
+  pursueInput: (car, tx, tz, cruise) => pursueSteer(car, tx, tz, cruise),
   scene,
   get renderer() { return renderer.renderer; },
 };

@@ -12,7 +12,61 @@ const hubMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a6 });
 const glassMat = new THREE.MeshLambertMaterial({ color: 0x1c2836 });
 const lightMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
 
+// The city's one motorcycle: two thin wheels, a low tank and a tail
+// cowl. The wheel pivots mirror the cars exactly (wheel + hub children)
+// so the shared spin / steering code in driveCar works untouched.
+function makeBikeMesh(colour) {
+  const g = new THREE.Group();
+  const paint = new THREE.MeshLambertMaterial({ color: colour });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x1c1c20 });
+  const chrome = new THREE.MeshLambertMaterial({ color: 0x9aa0a6 });
+  // Frame spine + fuel tank + seat + tail cowl, nose to tail.
+  const spine = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.22), dark);
+  spine.position.y = 0.62;
+  g.add(spine);
+  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.3, 0.42), paint);
+  tank.position.set(0.35, 0.82, 0);
+  tank.castShadow = true;
+  g.add(tank);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.34), dark);
+  seat.position.set(-0.35, 0.78, 0);
+  g.add(seat);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, 0.3), paint);
+  tail.position.set(-0.82, 0.86, 0);
+  g.add(tail);
+  // Handlebars + front fork.
+  const bars = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.8), chrome);
+  bars.position.set(0.82, 0.98, 0);
+  g.add(bars);
+  const fork = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 0.08), chrome);
+  fork.position.set(0.92, 0.6, 0);
+  fork.rotation.z = -0.35;
+  g.add(fork);
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.24), lightMat);
+  lamp.position.set(1.02, 0.72, 0);
+  g.add(lamp);
+  // Wheels: front pair steers, both spin — same pivot shape as cars.
+  const wheels = [];
+  const front = [];
+  for (const [wx, isFront] of [[0.95, true], [-0.85, false]]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(wx, 0.33, 0);
+    const tyre = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.12, 12), wheelMat);
+    tyre.rotation.x = Math.PI / 2;
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.14, 8), hubMat);
+    hub.rotation.x = Math.PI / 2;
+    pivot.add(tyre, hub);
+    g.add(pivot);
+    wheels.push(pivot);
+    if (isFront) front.push(pivot);
+  }
+  g.userData.wheels = wheels;
+  g.userData.frontWheels = front;
+  return g;
+}
+
 export function makeCarMesh(type, colour) {
+  if (type === 'motorcycle') return makeBikeMesh(colour);
   const spec = CAR_TYPES[type];
   const g = new THREE.Group();
   const bodyMat = new THREE.MeshLambertMaterial({ color: colour });
@@ -122,10 +176,12 @@ export function driveCar(car, throttle, steerInput, handbrake, dt, collide) {
   const spec = car.spec;
   const up = car.upgrades || { engine: 0, armour: 0, nitro: 0 };
   const nitroOn = car.nitroBoost && up.nitro > 0;
+  const isBike = car.type === 'motorcycle';
   const topSpeed = spec.topSpeed * (1 + 0.12 * up.engine) + (nitroOn ? 6 * up.nitro : 0);
   const accel = spec.accel * (1 + 0.15 * up.engine) * (nitroOn ? 1.6 : 1);
   const maxSteer = 0.55 / (1 + Math.abs(car.speed) * 0.045);
-  const targetSteer = steerInput * maxSteer * (handbrake ? 1.5 : 1);
+  // A bike flicks over quicker than a car at the same speed.
+  const targetSteer = steerInput * maxSteer * (handbrake ? 1.5 : 1) * (isBike ? 1.25 : 1);
   car.steer += (targetSteer - car.steer) * Math.min(1, dt * 8);
   if (throttle > 0) car.speed += accel * throttle * dt;
   else if (throttle < 0) {
@@ -136,7 +192,11 @@ export function driveCar(car, throttle, steerInput, handbrake, dt, collide) {
   car.speed -= car.speed * (handbrake ? 0.25 : 0.55) * dt; // drag / rolling resistance
   car.speed = Math.max(-9, Math.min(topSpeed, car.speed));
   if (Math.abs(car.speed) < 0.05 && throttle === 0) car.speed = 0;
-  car.heading += (car.speed / spec.length) * Math.tan(car.steer) * dt * (handbrake ? 1.6 : 1);
+  // A bike's short wheelbase would make it spin like a top at speed, so
+  // it steers on a longer effective wheelbase — still nimbler than a car,
+  // but a held turn no longer throws it off the road.
+  const turnLength = isBike ? spec.length * 1.6 : spec.length;
+  car.heading += (car.speed / turnLength) * Math.tan(car.steer) * dt * (handbrake ? 1.6 : 1);
   const nx = car.x + Math.sin(car.heading) * car.speed * dt;
   const nz = car.z + Math.cos(car.heading) * car.speed * dt;
   let impact = 0;
@@ -145,14 +205,16 @@ export function driveCar(car, throttle, steerInput, handbrake, dt, collide) {
     if (hit) {
       impact = Math.abs(car.speed);
       car.speed *= -0.25;
-      applyCarDamage(car, impact * 2.2);
+      // No armour, no crumple zone: a bike takes 60% more crash damage.
+      applyCarDamage(car, impact * 2.2 * (isBike ? 1.6 : 1));
     }
   }
   if (!impact) { car.x = nx; car.z = nz; }
   else { car.x += Math.sin(car.heading) * car.speed * dt; car.z += Math.cos(car.heading) * car.speed * dt; }
   car.mesh.position.set(car.x, 0, car.z);
   car.mesh.rotation.y = car.heading;
-  car.mesh.rotation.z = handbrake && Math.abs(car.speed) > 6 ? -car.steer * 0.12 : 0;
+  // A bike leans into the turn; a car only rolls a little on the handbrake.
+  car.mesh.rotation.z = isBike ? -car.steer * 0.5 : (handbrake && Math.abs(car.speed) > 6 ? -car.steer * 0.12 : 0);
   const spin = (car.speed * dt) / 0.36;
   for (const w of car.mesh.userData.wheels) {
     w.children[0].rotation.z += spin;
@@ -228,6 +290,15 @@ export function createTraffic(rng, city, scene) {
     parked.push(car);
   }
 
+  // The city's one motorcycle, always parked in the same spot so the
+  // player can find it: the kerb of the west road by the plaza
+  // (road z = -60, kerb offset 4.6). It is parked, never traffic, and
+  // the player steals it with E like any other parked vehicle.
+  const bike = newCar('motorcycle', -25, -55.4, Math.PI / 2, 0x1a1a1a);
+  bike.parked = true;
+  scene.add(bike.mesh);
+  parked.push(bike);
+
   function lightAt(x, z) {
     for (const l of city.lights) {
       if (Math.abs(l.x - x) < 1 && Math.abs(l.z - z) < 1) return l;
@@ -296,5 +367,5 @@ export function createTraffic(rng, city, scene) {
     }
   }
 
-  return { cars, parked, update };
+  return { cars, parked, bike, update };
 }

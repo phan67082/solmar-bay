@@ -113,9 +113,9 @@ export function createAudio() {
       if (master && ctx) master.gain.value = muted ? 0 : 0.5;
     },
     isMuted() { return muted; },
-    setEngine(speed01, on) {
+    setEngine(speed01, on, pitch = 1) {
       if (!ctx) return;
-      engineOsc.frequency.value = 55 + speed01 * 130;
+      engineOsc.frequency.value = (55 + speed01 * 130) * pitch;
       engineGain.gain.value = on ? 0.05 + speed01 * 0.05 : 0;
     },
     setSiren(on, distance) {

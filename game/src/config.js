@@ -39,6 +39,10 @@ export const CAR_TYPES = {
   pickup: { name: 'Pickup', topSpeed: 24, accel: 11, brake: 26, grip: 2.2, length: 4.8, width: 1.9, height: 1.7, colours: [0x6b4f2a, 0x3f6b4f, 0x9aa0a6] },
   van: { name: 'Van', topSpeed: 22, accel: 10, brake: 24, grip: 2.0, length: 5.0, width: 2.0, height: 2.1, colours: [0xd8d3c8, 0x4a6b8a, 0x8a4a4a] },
   police: { name: 'Police cruiser', topSpeed: 34, accel: 16, brake: 34, grip: 2.7, length: 4.5, width: 1.9, height: 1.45, colours: [0xf0f0f0] },
+  // The one motorcycle in the city: quicker off the line and faster flat
+  // out than any stock car, but no armour and no roof — a hard crash
+  // throws the rider off (see driveCar / stepPlayer).
+  motorcycle: { name: 'Nightrider 600', topSpeed: 42, accel: 22, brake: 30, grip: 2.8, length: 2.2, width: 0.8, height: 1.15, colours: [0x1a1a1a, 0xc22730, 0x1f6fb2] },
 };
 
 // A busier city for the polished build: more traffic on the roads,
