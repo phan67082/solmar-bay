@@ -200,7 +200,17 @@ export function buildCity(rng) {
         const oz = Math.max(-ozLimit, Math.min(ozLimit, (i < 2 ? -12 : 12) + range(rng, -4, 4)));
         const x = bx + ox;
         const z = bz + oz;
-        const mat = pick(rng, facadeMats);
+        // District palettes: pastel beachfront, warm hillside, cool
+        // glass downtown, mixed elsewhere — the city reads district by
+        // district instead of one brown repeat.
+        const regionMats = bx < -180
+          ? [facadeMats[3], facadeMats[5], facadeMats[2]]
+          : (bx >= 210 && bz <= -210)
+            ? [facadeMats[0], facadeMats[4], facadeMats[6]]
+            : (Math.abs(bx) <= 90 && Math.abs(bz) <= 90)
+              ? [facadeMats[2], facadeMats[5], facadeMats[1]]
+              : facadeMats;
+        const mat = pick(rng, regionMats);
         const b = box(w, h, d, mat, x, h / 2, z);
         b.castShadow = true;
         box(w + 0.6, 0.5, d + 0.6, roofMat, x, h + 0.25, z);
@@ -392,6 +402,48 @@ export function buildCity(rng) {
     addCollider(cx, cz, 1.1, 1.1);
   }
 
+  // --- neon signposts, market stalls, extra stunt ramps ------------------
+  const neonSigns = [
+    ['SOLMAR FM 88.1', '#7b2d8e', '#ffe9a8', -348, -120, 0],
+    ['CASINO MIRAMAR', '#c22730', '#ffe9a8', 12, -348, Math.PI / 2],
+    ['CLUB VOLTAGE', '#1f6fb2', '#f5f5f0', -348, 240, 0],
+    ['HOTEL MIRAMAR', '#2e7d4f', '#ffe9a8', 168, -348, Math.PI / 2],
+    ['BOLT BURGER', '#e08a2e', '#1a120c', -168, 348, 0],
+  ];
+  for (const [text, bg, fg, sx, sz, ry] of neonSigns) {
+    box(0.5, 11, 0.5, poleMat, sx, 5.5, sz);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 3), new THREE.MeshBasicMaterial({ map: signTexture(text, bg, fg) }));
+    sign.position.set(sx, 11.5, sz);
+    sign.rotation.y = ry;
+    group.add(sign);
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(16.6, 3.6), new THREE.MeshBasicMaterial({ color: 0xff5a7a, transparent: true, opacity: 0.25 }));
+    glow.position.set(sx, 11.5, sz);
+    glow.rotation.y = ry;
+    glow.position.x += Math.sin(ry) * -0.15;
+    glow.position.z += Math.cos(ry) * -0.15;
+    group.add(glow);
+    addCollider(sx, sz, 1, 1);
+  }
+  // Market stalls on the plaza: striped awnings, counters, crates.
+  for (const [sx, sz, awnColour] of [[-14, -16, 0xc22730], [-46, -42, 0x1f6fb2]]) {
+    box(5, 0.3, 3.5, new THREE.MeshLambertMaterial({ color: awnColour }), sx, 2.6, sz);
+    box(4.6, 1.0, 2.6, woodMat, sx, 0.5, sz);
+    box(1.2, 1.2, 1.2, woodMat, sx + 3, 0.6, sz + 2);
+    box(1.2, 1.2, 1.2, new THREE.MeshLambertMaterial({ color: 0x2e7d4f }), sx - 3, 0.6, sz - 2);
+    addCollider(sx, sz, 2.6, 1.8);
+  }
+  // Two more stunt ramps, both on open road so a car can actually hit
+  // them at speed: one on the beachfront boulevard, one on the east
+  // road through downtown — three jumps total, each with its own bonus.
+  const ramp2 = { x: -357, z: 200, heading: Math.PI };
+  const ramp2Mesh = box(8, 1, 14, new THREE.MeshLambertMaterial({ color: 0x37e0c8 }), ramp2.x, 1.2, ramp2.z);
+  ramp2Mesh.rotation.x = -0.35;
+  ramp2Mesh.castShadow = false;
+  const ramp3 = { x: 240, z: -180, heading: Math.PI / 2 };
+  const ramp3Mesh = box(14, 1, 8, new THREE.MeshLambertMaterial({ color: 0xff5a7a }), ramp3.x, 1.2, ramp3.z);
+  ramp3Mesh.rotation.z = 0.35;
+  ramp3Mesh.castShadow = false;
+
   // --- distant skyline ring and the hillside --------------------------------
   const skylineMat = new THREE.MeshLambertMaterial({ color: 0x6b5a52 });
   for (let i = 0; i < 22; i += 1) {
@@ -416,6 +468,8 @@ export function buildCity(rng) {
     garage,
     bank,
     ramp,
+    ramp2,
+    ramp3,
     spawn: { x: -20, z: -8, heading: Math.PI / 2 },
   };
 }

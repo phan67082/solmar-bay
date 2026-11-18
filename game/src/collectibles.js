@@ -34,7 +34,10 @@ export function createCollectibles(rng, scene, city) {
     drops.push({ x, z, mesh, taken: false, phase: rng() * Math.PI * 2 });
   }
 
-  let stuntDone = false;
+  // Three stunt ramps: the marina gap, the boulevard, and the downtown
+  // east road. Each clears once per world (a retry does not re-pay it),
+  // and each pays its own bonus.
+  const ramps = [city.ramp, city.ramp2, city.ramp3].filter(Boolean).map((r) => ({ ...r, done: false }));
   let stuntCooldown = 0;
 
   function update(dt, px, pz, inCar, speed) {
@@ -50,15 +53,17 @@ export function createCollectibles(rng, scene, city) {
         collected += 1;
       }
     }
-    // Stunt jump: cross the ramp fast and the bonus is yours.
+    // Stunt jump: cross a ramp fast and the bonus is yours.
     if (stuntCooldown > 0) stuntCooldown -= dt;
     let stunt = false;
-    if (inCar && !stuntDone && stuntCooldown <= 0) {
-      const r = city.ramp;
-      if (Math.hypot(px - r.x, pz - r.z) < 7 && Math.abs(speed) > 18) {
-        stuntDone = true;
-        stuntCooldown = 10;
-        stunt = true;
+    if (inCar && stuntCooldown <= 0) {
+      for (const r of ramps) {
+        if (!r.done && Math.hypot(px - r.x, pz - r.z) < 7 && Math.abs(speed) > 18) {
+          r.done = true;
+          stuntCooldown = 10;
+          stunt = true;
+          break;
+        }
       }
     }
     return { collected, stunt, total: drops.length, got: drops.filter((d) => d.taken).length };
@@ -69,7 +74,7 @@ export function createCollectibles(rng, scene, city) {
       d.taken = false;
       d.mesh.visible = true;
     }
-    stuntDone = false;
+    for (const r of ramps) r.done = false;
   }
 
   // Indices of the drops already taken, for the save file.
@@ -98,5 +103,7 @@ export function createCollectibles(rng, scene, city) {
     takenIndices,
     restoreTaken,
     get collectedCount() { return drops.filter((d) => d.taken).length; },
+    get stuntsDone() { return ramps.filter((r) => r.done).length; },
+    get stuntsTotal() { return ramps.length; },
   };
 }

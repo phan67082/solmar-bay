@@ -9,7 +9,7 @@ import { MISSIONS } from './missions.js';
 
 export const DISTRICTS = [
   { name: 'BEACHFRONT', tag: 'Sun, sand and fast cars on the strip', x0: -396, x1: -360, z0: -396, z1: 400, colour: '#e0c48f' },
-  { name: 'DOWNTOWN', tag: 'Glass towers and the bank', x0: -180, x1: 180, z0: -180, z1: 60, colour: '#7d8aa8' },
+  { name: 'DOWNTOWN', tag: 'Glass towers and the bank', x0: -180, x1: 180, z0: -180, z1: 60, colour: '#7d8aa8', lx: 100, lz: -130 },
   { name: 'OLD TOWN', tag: 'Narrow streets, old money', x0: -360, x1: -180, z0: -360, z1: -60, colour: '#a89a80' },
   { name: 'PLAZA', tag: 'The fountain at the heart of the bay', x0: -60, x1: 0, z0: -60, z1: 0, colour: '#c9b489' },
   { name: 'HILLSIDE', tag: 'Winding roads above the bay', x0: 180, x1: 396, z0: -360, z1: -60, colour: '#7fae62' },
@@ -40,8 +40,9 @@ const LEGEND = [
 
 const SIDE_JOBS = [
   { name: 'Taxi fares', state: (s) => `${s.faresDone} done — hail a waving passenger` },
-  { name: 'Street races', state: () => '3 races — markers at the Marina, Port and Beachfront' },
-  { name: 'Stunt jumps', state: () => '1 ramp over the marina gap — +$200 a clear' },
+  { name: 'Package deliveries', state: (s) => `${s.deliveriesDone ?? 0} done — pick up the glowing parcel` },
+  { name: 'Street races', state: (s) => `${s.racesWon ?? 0}/3 won — gates at Beachfront, Marina, Downtown` },
+  { name: 'Stunt jumps', state: (s) => `${s.stuntsDone ?? 0}/3 cleared — +$200 a clear` },
   { name: 'Cash drops', state: (s) => `${s.dropsGot}/20 found — +$50 each, +$500 for all 20` },
 ];
 
@@ -81,7 +82,18 @@ export function createMap(doc, getState) {
       ctx.fillStyle = '#0e1418';
       ctx.font = `bold ${Math.max(11, 13 * scale)}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(d.name, (px(d.x0) + px(d.x1)) / 2, (pz(d.z0) + pz(d.z1)) / 2);
+      // The label sits at the district's label point (lx/lz when set)
+      // instead of the bare centre: DOWNTOWN's centre sits almost on
+      // top of PLAZA's, and the two names used to print over each other.
+      // The label x is clamped inside the canvas so thin districts
+      // like BEACHFRONT don't print half off the edge, and every label
+      // gets a light halo so it reads on dark and light ground alike.
+      const labelCX = Math.max(70, Math.min(W - 70, px(d.lx ?? (d.x0 + d.x1) / 2)));
+      const labelCY = pz(d.lz ?? (d.z0 + d.z1) / 2);
+      ctx.strokeStyle = 'rgba(245,239,228,0.85)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(d.name, labelCX, labelCY);
+      ctx.fillText(d.name, labelCX, labelCY);
     }
     // Streets.
     ctx.strokeStyle = 'rgba(245,239,228,0.55)';
@@ -122,11 +134,24 @@ export function createMap(doc, getState) {
       ctx.setLineDash([]);
       ctx.fillStyle = '#ffd21f';
       ctx.beginPath(); ctx.arc(px(s.marker.x), pz(s.marker.z), 7, 0, Math.PI * 2); ctx.fill();
+      // GPS distance: printed on the far side of the marker from the
+      // player, with a dark backing, so it never sits on the player
+      // arrow or the route line.
       ctx.fillStyle = '#0e1418';
       ctx.font = 'bold 11px system-ui, sans-serif';
       ctx.textAlign = 'center';
       const gps = Math.round(Math.hypot(s.marker.x - s.player.x, s.marker.z - s.player.z));
-      ctx.fillText(`${gps}m`, px(s.marker.x), pz(s.marker.z) - 12);
+      const gx = s.marker.x - s.player.x;
+      const gz = s.marker.z - s.player.z;
+      const gl = Math.hypot(gx, gz) || 1;
+      const labelX = px(s.marker.x) + (gx / gl) * 26;
+      const labelY = pz(s.marker.z) + (gz / gl) * 26;
+      const label = `${gps}m`;
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(14,20,24,0.85)';
+      ctx.fillRect(labelX - tw / 2 - 4, labelY - 14, tw + 8, 16);
+      ctx.fillStyle = '#ffd21f';
+      ctx.fillText(label, labelX, labelY - 2);
     }
     // Police blips.
     ctx.fillStyle = '#3a86ff';
@@ -189,6 +214,9 @@ export function createMap(doc, getState) {
       `<div class="map-row"><span>Takedowns</span><b>${p.stats.takedowns}</b></div>` +
       `<div class="map-row"><span>Escapes</span><b>${p.stats.escapes}</b></div>` +
       `<div class="map-row"><span>Taxi fares</span><b>${s.faresDone} done · $${s.taxiEarned.toLocaleString('en-US')}</b></div>` +
+      `<div class="map-row"><span>Deliveries</span><b>${s.deliveriesDone ?? 0} done · $${(s.deliveryEarned ?? 0).toLocaleString('en-US')}</b></div>` +
+      `<div class="map-row"><span>Street races</span><b>${s.racesWon ?? 0}/3 won</b></div>` +
+      `<div class="map-row"><span>Stunt jumps</span><b>${s.stuntsDone ?? 0}/3 cleared</b></div>` +
       `<div class="map-row"><span>Cash drops</span><b>${s.dropsGot}/20</b></div>` +
       `<div class="map-row"><span>Skills</span><b>Driving ${'●'.repeat(p.skills.Driving)}${'○'.repeat(5 - p.skills.Driving)} · Shooting ${'●'.repeat(p.skills.Shooting)}${'○'.repeat(5 - p.skills.Shooting)} · Stamina ${'●'.repeat(p.skills.Stamina)}${'○'.repeat(5 - p.skills.Stamina)}</b></div>`;
     statsEl.innerHTML = statsHtml;

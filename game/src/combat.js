@@ -33,15 +33,25 @@ function makeEnemyMesh() {
   return g;
 }
 
-export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotspotClear = null) {
+export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotspotClear = null, onWeaponPickup = null) {
   let weapon = 'fists';
-  let ammo = WEAPONS.pistol.magSize;
-  let reserve = WEAPONS.pistol.reserve;
+  // One magazine + reserve per gun; fists need none. The player starts
+  // with fists and the pistol; the SMG, shotgun and rifle are found as
+  // glowing weapon crates in the world (see spawnPickup below).
+  const owned = new Set(['fists', 'pistol']);
+  const mags = {};
+  const reserves = {};
+  for (const name of Object.keys(WEAPONS)) {
+    if (name === 'fists') continue;
+    mags[name] = WEAPONS[name].magSize;
+    reserves[name] = WEAPONS[name].reserve;
+  }
   let cooldown = 0;
   let reloadT = 0;
   let muzzleT = 0;
   let lastShotAt = -10;
   const enemies = [];
+  const pickups = [];
   const flashLight = new THREE.PointLight(0xffc860, 0, 14);
   scene.add(flashLight);
   const flashSprite = new THREE.Mesh(
@@ -90,6 +100,45 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
       }
     }
     return best;
+  }
+
+  // A glowing weapon crate: walk over it to pick the gun up (with a
+  // full magazine and reserve). Crates sit at fixed landmarks so the
+  // player can find them: SMG by the plaza fountain, shotgun at the
+  // port docks, rifle on the hillside overlook.
+  function spawnPickup(name, x, z) {
+    const g = new THREE.Group();
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.9), new THREE.MeshLambertMaterial({ color: 0x2e3440 }));
+    crate.position.y = 0.3;
+    g.add(crate);
+    const glow = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 1.0), new THREE.MeshBasicMaterial({ color: 0xffd21f }));
+    glow.position.y = 0.66;
+    g.add(glow);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.1), new THREE.MeshLambertMaterial({ color: 0x141414 }));
+    barrel.position.y = 0.85;
+    barrel.rotation.y = 0.6;
+    g.add(barrel);
+    g.position.set(x, 0, z);
+    scene.add(g);
+    const pickup = { name, x, z, mesh: g, taken: false, phase: Math.random() * Math.PI * 2 };
+    pickups.push(pickup);
+    return pickup;
+  }
+
+  function pickupWeapon(name) {
+    if (!WEAPONS[name] || name === 'fists') return false;
+    const first = !owned.has(name);
+    owned.add(name);
+    mags[name] = WEAPONS[name].magSize;
+    reserves[name] = WEAPONS[name].reserve;
+    if (first) weapon = name;
+    return first;
+  }
+
+  function spawnDefaultPickups() {
+    spawnPickup('smg', -48, -48);
+    spawnPickup('shotgun', 236, 330);
+    spawnPickup('rifle', 300, -300);
   }
 
   function spawnEnemy(x, z, hp = 100, tag = 'free') {
@@ -148,43 +197,57 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
       }
       return null;
     }
-    if (ammo <= 0) return null;
-    ammo -= 1;
+    if (mags[weapon] <= 0) return null;
+    mags[weapon] -= 1;
     muzzleT = 0.07;
     flashLight.position.set(ox + dx, oy, oz + dz);
-    flashLight.intensity = 30;
+    flashLight.intensity = spec.pellets ? 46 : 30;
     flashSprite.position.set(ox + dx * 1.2, oy, oz + dz * 1.2);
     flashSprite.material.opacity = 0.95;
-    let best = null;
-    let bestD = spec.range;
-    for (const e of enemies) {
-      if (e.dead) continue;
-      const ex = e.x - ox;
-      const ez = e.z - oz;
-      const d = Math.hypot(ex, ez);
-      if (d > spec.range) continue;
-      const dot = (ex * dx + ez * dz) / d;
-      if (dot < 0.985) continue; // outside the firing cone
-      if (d < bestD) { bestD = d; best = e; }
-    }
-    if (best) {
+    // One hitscan ray per pellet: the shotgun throws five pellets in a
+    // spread cone, the other guns a single tight ray. A pellet that
+    // lands still sparks and hurts; pellets past a covered enemy spark
+    // off the wall instead.
+    const pellets = spec.pellets || 1;
+    let hitAny = null;
+    for (let p = 0; p < pellets; p += 1) {
+      const spread = spec.spread || 0;
+      const ang = (Math.random() - 0.5) * 2 * spread;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      const pdx = dx * ca - dz * sa;
+      const pdz = dx * sa + dz * ca;
+      let best = null;
+      let bestD = spec.range;
+      for (const e of enemies) {
+        if (e.dead) continue;
+        const ex = e.x - ox;
+        const ez = e.z - oz;
+        const d = Math.hypot(ex, ez);
+        if (d > spec.range) continue;
+        const dot = (ex * pdx + ez * pdz) / d;
+        if (dot < 0.985) continue; // outside the firing cone
+        if (d < bestD) { bestD = d; best = e; }
+      }
+      if (!best) continue;
       if (best.inCover && Math.random() < 0.4) {
         spawnSpark(best.x, 1.3, best.z);
-        return null; // the round sparked off the cover
+        continue; // the round sparked off the cover
       }
       best.hp -= spec.damage;
       best.flashT = 0.12;
       spawnSpark(best.x, 1.3, best.z);
       if (best.hp <= 0) kill(best);
+      hitAny = best;
     }
-    return best;
+    return hitAny;
   }
 
   function kill(e) {
     e.dead = true;
     e.mesh.rotation.x = -Math.PI / 2;
     e.mesh.position.y = 0.35;
-    reserve += 6; // fallen enemies drop spare rounds
+    if (weapon !== 'fists') reserves[weapon] += 6; // fallen enemies drop spare rounds
     if (e.tag === 'hotspot' && aliveCount('hotspot') === 0) {
       // Every hotspot crew is down: each spawned hotspot counts as cleared.
       for (const spot of HOTSPOTS) {
@@ -198,12 +261,12 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
   }
 
   function reload() {
-    if (weapon !== 'pistol' || reloadT > 0 || ammo === WEAPONS.pistol.magSize || reserve <= 0) return;
-    reloadT = WEAPONS.pistol.reload;
+    if (weapon === 'fists' || reloadT > 0 || mags[weapon] === WEAPONS[weapon].magSize || reserves[weapon] <= 0) return;
+    reloadT = WEAPONS[weapon].reload;
   }
 
   function switchWeapon(name) {
-    if (WEAPONS[name]) weapon = name;
+    if (WEAPONS[name] && owned.has(name)) weapon = name;
   }
 
   function update(dt, playerPos, time) {
@@ -224,11 +287,24 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     }
     if (reloadT > 0) {
       reloadT -= dt;
-      if (reloadT <= 0) {
-        const need = WEAPONS.pistol.magSize - ammo;
-        const take = Math.min(need, reserve);
-        ammo += take;
-        reserve -= take;
+      if (reloadT <= 0 && weapon !== 'fists') {
+        const need = WEAPONS[weapon].magSize - mags[weapon];
+        const take = Math.min(need, reserves[weapon]);
+        mags[weapon] += take;
+        reserves[weapon] -= take;
+      }
+    }
+    // Weapon crates: walk over one to pick the gun up.
+    for (const pk of pickups) {
+      if (pk.taken) continue;
+      pk.phase += dt * 3;
+      pk.mesh.position.y = Math.sin(pk.phase) * 0.12;
+      pk.mesh.rotation.y += dt * 0.8;
+      if (Math.hypot(playerPos.x - pk.x, playerPos.z - pk.z) < 2.4) {
+        pk.taken = true;
+        pk.mesh.visible = false;
+        const first = pickupWeapon(pk.name);
+        if (onWeaponPickup) onWeaponPickup(pk.name, first);
       }
     }
     // Free-roam hotspots: a rival crew steps out when the player comes near.
@@ -293,15 +369,23 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     }
   }
 
+  // The three weapon crates are part of the world from the start.
+  spawnDefaultPickups();
+
   return {
     get weapon() { return weapon; },
-    get ammo() { return ammo; },
-    get reserve() { return reserve; },
+    get weaponName() { return WEAPONS[weapon].name; },
+    get ammo() { return weapon === 'fists' ? 0 : mags[weapon]; },
+    get reserve() { return weapon === 'fists' ? 0 : reserves[weapon]; },
     get reloading() { return reloadT > 0; },
     get lastShotAt() { return lastShotAt; },
+    ownedWeapons() { return ['fists', 'pistol', 'smg', 'shotgun', 'rifle'].filter((n) => owned.has(n)); },
     enemies,
+    pickups,
     muzzleFlash: flashSprite,
     spawnEnemy,
+    spawnPickup,
+    pickupWeapon,
     clearEnemies,
     aliveCount,
     shoot,

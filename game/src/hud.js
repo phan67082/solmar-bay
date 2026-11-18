@@ -201,22 +201,26 @@ export function createHud(doc) {
     for (let i = 0; i < 5; i += 1) stars += i < state.stars ? '★' : '☆';
     starsEl.textContent = stars;
     starsEl.classList.toggle('hot', state.stars > 0);
-    // Weapon slots: fists + pistol live, SMG / shotgun / rifle locked
-    // until the armoury opens them (Builder B's combat pass).
-    const owned = { Fists: true, Pistol: state.weaponName !== 'Fists' };
+    // Weapon slots: a slot lights up once its gun is picked up in the
+    // world (SMG by the plaza, shotgun at the port, rifle on the
+    // hillside); unowned guns stay LOCKED.
+    const ownedKeys = new Set(state.ownedWeapons || ['fists', 'pistol']);
+    const slotKeys = ['fists', 'pistol', 'smg', 'shotgun', 'rifle'];
     slotsEl.innerHTML = '';
     WEAPON_SLOTS.forEach((name, i) => {
       const span = doc.createElement('span');
-      const active = (i === 0 && state.weaponName === 'Fists') || (i === 1 && state.weaponName !== 'Fists');
-      const locked = i >= 2;
+      const key = slotKeys[i];
+      const active = state.weaponName === name;
+      const locked = !ownedKeys.has(key);
       span.className = `slot${active ? ' active' : ''}${locked ? ' locked' : ''}`;
-      span.textContent = locked ? `${i + 1} ${name} 🔒` : `${i + 1} ${name}${i === 1 ? ` ${state.ammoText}` : ''}`;
+      span.textContent = locked ? `${i + 1} ${name} 🔒` : `${i + 1} ${name}${active && i > 0 ? ` ${state.ammoText}` : ''}`;
       slotsEl.appendChild(span);
     });
     weaponEl.textContent = state.inCar ? '—' : `${state.weaponName}  ${state.ammoText}`;
-    // Car panel: name, condition bar, gear, big speed.
-    if (state.inCar && state.carName) {
-      carEl.textContent = `${state.carName} — CONDITION ${Math.max(0, Math.round(state.carCondition ?? 100))}%`;
+    // Car panel: name, condition bar, gear, big speed (also used for
+    // the helicopter while flying).
+    if (state.carName) {
+      carEl.textContent = state.carName === 'HELICOPTER' ? 'HELICOPTER — AIRBORNE' : `${state.carName} — CONDITION ${Math.max(0, Math.round(state.carCondition ?? 100))}%`;
       gearEl.textContent = state.gear || '';
       speedEl.textContent = `${Math.round(Math.abs(state.speed) * 3.6)} km/h`;
     } else {

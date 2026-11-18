@@ -49,6 +49,9 @@ export const CASH_DROP_COUNT = 20;
 export const WEAPONS = {
   fists: { name: 'Fists', range: 2.2, damage: 25, rate: 0.45, ammo: Infinity },
   pistol: { name: 'Pistol', range: 70, damage: 34, rate: 0.28, magSize: 12, reserve: 60, reload: 1.1 },
+  smg: { name: 'SMG', range: 55, damage: 16, rate: 0.09, magSize: 32, reserve: 160, reload: 1.4 },
+  shotgun: { name: 'Shotgun', range: 26, damage: 22, rate: 0.85, magSize: 6, reserve: 30, reload: 1.8, pellets: 5, spread: 0.09 },
+  rifle: { name: 'Rifle', range: 110, damage: 68, rate: 0.55, magSize: 10, reserve: 50, reload: 1.6 },
 };
 
 export const PALETTE = {

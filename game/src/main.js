@@ -13,12 +13,14 @@
 import * as THREE from 'three';
 import { STEP, PLAYER, SAVE_KEY, WEAPONS } from './config.js';
 import { createRandom } from './random.js';
-import { createInput, ACTION_PAUSE, ACTION_ENTER, ACTION_JUMP, ACTION_PUNCH, ACTION_SHOOT, ACTION_HORN, ACTION_LIGHTS, ACTION_MUTE, ACTION_RELOAD, ACTION_WEAPON1, ACTION_WEAPON2, ACTION_RESTART, ACTION_MAP, ACTION_GARAGE } from './input.js';
+import { createInput, ACTION_PAUSE, ACTION_ENTER, ACTION_JUMP, ACTION_PUNCH, ACTION_SHOOT, ACTION_HORN, ACTION_LIGHTS, ACTION_MUTE, ACTION_RELOAD, ACTION_WEAPON1, ACTION_WEAPON2, ACTION_WEAPON3, ACTION_WEAPON4, ACTION_WEAPON5, ACTION_RESTART, ACTION_MAP, ACTION_GARAGE } from './input.js';
 import { createAudio } from './audio.js';
 import { buildCity } from './city.js';
-import { createTraffic, driveCar, pursueSteer, newCar } from './vehicles.js';
+import { createTraffic, driveCar, pursueSteer, newCar, applyCarDamage } from './vehicles.js';
 import { createPedestrians } from './pedestrians.js';
 import { createPolice } from './police.js';
+import { createHelicopter, HELIPAD } from './helicopter.js';
+import { createSideJobs } from './sidejobs.js';
 import { createCombat } from './combat.js';
 import { createMissions, MISSIONS } from './missions.js';
 import { createCollectibles } from './collectibles.js';
@@ -64,6 +66,12 @@ const garageHooks = {
     garageState.upgrades[type] = garageState.upgrades[type] || {};
     garageState.upgrades[type][kind] = (garageState.upgrades[type][kind] ?? 0) + 1;
     if (kind === 'respray' && police) police.setStars(0);
+    // A purchase takes effect at once, even if the player is sitting in
+    // that car right now — no re-enter needed to feel the new engine.
+    if (player.car && player.car.type === type) {
+      const up = garageState.upgrades[type];
+      player.car.upgrades = { engine: up.engine ?? 0, armour: up.armour ?? 0, nitro: up.nitro ?? 0 };
+    }
     writeSave(collectSave());
     return true;
   },
@@ -83,6 +91,10 @@ const cityMap = createMap(document, () => ({
   timePlayed: time,
   faresDone: taxi ? taxi.faresDone : 0,
   taxiEarned: taxi ? taxi.totalEarned : 0,
+  deliveriesDone: progression.stats.deliveriesDone,
+  deliveryEarned: progression.stats.deliveryEarned,
+  racesWon: progression.stats.racesWon,
+  stuntsDone: progression.stats.stuntsDone,
   dropsGot: collectibles ? collectibles.collectedCount : 0,
   drops: collectibles ? collectibles.drops : [],
   cruisers: police ? police.cruisers : [],
@@ -200,6 +212,8 @@ let collectibles = null;
 let combat = null;
 let police = null;
 let taxi = null;
+let heli = null;
+let sideJobs = null;
 
 // Cash drops collected in this session, kept across world resets so a
 // retry or a mission restart cannot farm the same drop twice.
@@ -213,9 +227,11 @@ function buildDynamic() {
   traffic = createTraffic(rng, city, dynamicGroup);
   peds = createPedestrians(rng, dynamicGroup);
   collectibles = createCollectibles(rng, dynamicGroup, city);
-  combat = createCombat(dynamicGroup, onPlayerHit, onKill, city.colliders, onHotspotClear);
+  combat = createCombat(dynamicGroup, onPlayerHit, onKill, city.colliders, onHotspotClear, onWeaponPickup);
   police = createPolice(dynamicGroup);
   taxi = createTaxi(dynamicGroup);
+  heli = createHelicopter(dynamicGroup);
+  sideJobs = createSideJobs(dynamicGroup);
   collectibles.restoreTaken([...persistentDrops]);
 }
 
@@ -327,6 +343,48 @@ function handleMissionEvent(ev) {
   } else if (ev.kind === 'failed') {
     audio.missionFail();
     hud.toast(`Mission failed: ${ev.reason}`);
+  }
+}
+
+function onWeaponPickup(name, first) {
+  audio.pickup();
+  progression.addPractice('Shooting', 3);
+  const key = name === 'smg' ? '3' : name === 'shotgun' ? '4' : '5';
+  hud.toast(first ? `${WEAPONS[name].name} picked up! Press ${key} to use it.` : `${WEAPONS[name].name} restocked.`);
+  if (first) hud.popup(`${WEAPONS[name].name.toUpperCase()} UNLOCKED`);
+}
+
+function handleSideJobEvent(ev) {
+  if (ev.kind === 'delivery-picked') {
+    audio.taxi();
+    hud.toast(`Package picked up — $${ev.pay} to the green marker`);
+  } else if (ev.kind === 'delivery-done') {
+    player.cash += ev.total;
+    audio.cash();
+    progression.addRep(20);
+    progression.stats.deliveriesDone = sideJobs.deliveriesDone;
+    progression.stats.deliveryEarned = sideJobs.deliveryEarned;
+    progression.addPractice('Driving', 4);
+    hud.toast(`Delivery complete  +$${ev.total}  (tip $${ev.tip})`);
+    hud.popup(`DELIVERY +$${ev.total} · +20 REP`);
+  } else if (ev.kind === 'delivery-expired') {
+    hud.toast('The delivery window closed — no pay.');
+  } else if (ev.kind === 'race-started') {
+    audio.taxi();
+    hud.toast(`${ev.name} — hit every checkpoint, fast!`);
+  } else if (ev.kind === 'race-checkpoint') {
+    audio.pickup();
+    hud.toast(`Checkpoint ${ev.point}/${ev.total}`);
+  } else if (ev.kind === 'race-done') {
+    player.cash += ev.pay;
+    audio.missionComplete();
+    progression.addRep(40);
+    progression.stats.racesWon = sideJobs.racesWon;
+    progression.addPractice('Driving', 8);
+    hud.toast(`${ev.name} won in ${ev.time.toFixed(1)}s!  +$${ev.pay}`);
+    hud.popup(`RACE WON +$${ev.pay} · +40 REP`);
+  } else if (ev.kind === 'race-quit') {
+    hud.toast('Race abandoned — you left the car.');
   }
 }
 
@@ -491,6 +549,8 @@ function placePlayerOnFoot(x, z, heading) {
 
 function placePlayerInCar(type, x, z, heading) {
   const car = newCar(type, x, z, heading, 0xd94f3d);
+  const up = garageState.upgrades[type] || {};
+  car.upgrades = { engine: up.engine ?? 0, armour: up.armour ?? 0, nitro: up.nitro ?? 0 };
   dynamicGroup.add(car.mesh);
   player.car = car;
   player.inCar = true;
@@ -511,6 +571,8 @@ function stageCamera(pos, look) {
 const game = {
   player, missions, police: null, combat: null, traffic: null, peds: null, collectibles: null,
   resetWorld, stepSim, setScreen, placePlayerOnFoot, placePlayerInCar, stageCamera,
+  openMap, closeMap,
+  setSky(hour) { renderer.setSky(hour); },
   pursueInput(car, tx, tz, cruise) { return pursueSteer(car, tx, tz, cruise); },
 };
 Object.defineProperties(game, {
@@ -519,6 +581,9 @@ Object.defineProperties(game, {
   traffic: { get: () => traffic },
   peds: { get: () => peds },
   collectibles: { get: () => collectibles },
+  heli: { get: () => heli },
+  sideJobs: { get: () => sideJobs },
+  taxi: { get: () => taxi },
 });
 
 // --- one fixed step ---------------------------------------------------------------
@@ -565,9 +630,16 @@ function stepSim(dt, inputOverride, ambient = false) {
   }
   if (drops.stunt) {
     player.cash += 200;
+    progression.addRep(15);
+    progression.stats.stuntsDone = collectibles.stuntsDone;
     hud.toast('Stunt jump!  +$200');
+    hud.popup('STUNT JUMP +$200 · +15 REP');
     audio.pickup();
   }
+
+  // The sky follows the in-game clock: 10 seconds of play is one game
+  // minute, starting at 18:42 golden hour and sliding toward dusk.
+  renderer.setSky((18.7 + time / 600) % 24);
 
   if (!ambient) stepPlayer(dt, inputOverride);
   else {
@@ -587,7 +659,7 @@ function stepSim(dt, inputOverride, ambient = false) {
         if (Math.hypot(c.x - player.x, c.z - player.z) < 2.6 && Math.abs(player.car.speed) > 1) {
           const impact = Math.abs(player.car.speed);
           player.car.speed *= -0.3;
-          player.car.damage += impact * 2;
+          applyCarDamage(player.car, impact * 2);
           audio.crash();
           player.flash = Math.max(player.flash, 0.3);
         }
@@ -600,14 +672,15 @@ function stepSim(dt, inputOverride, ambient = false) {
     }
   }
 
-  // Missions and taxi fares only advance while actually playing — never
-  // during the title-screen sweep or a staged screenshot.
+  // Missions, taxi fares and side jobs only advance while actually
+  // playing — never during the title-screen sweep or a staged screenshot.
   if (!ambient && screen === SCREEN_PLAY) {
     for (const ev of missions.update(dt, {
       x: player.x, z: player.z, inCar: player.inCar, car: player.car,
       carDamage: player.car ? player.car.damage : 0, time,
     })) handleMissionEvent(ev);
     for (const ev of taxi.update(dt, player)) handleTaxiEvent(ev);
+    for (const ev of sideJobs.update(dt, player)) handleSideJobEvent(ev);
   }
 
   // Health regenerates slowly out of combat.
@@ -661,8 +734,27 @@ function stepPlayer(dt, inputOverride) {
   renderer.cam.yaw -= orbit.dx * 0.005;
   renderer.cam.pitch = Math.max(0.05, Math.min(1.2, renderer.cam.pitch + orbit.dy * 0.004));
 
+  // Flying the helicopter: W/S forward/back, A/D yaw, Space climbs,
+  // Shift descends, E lands and steps out.
+  if (heli && heli.isFlying) {
+    heli.fly(dt, { f: move.f, s: move.s, lift: input.held('Space'), descend: run });
+    const hp = heli.pos;
+    player.x = hp.x;
+    player.z = hp.z;
+    player.y = hp.y;
+    player.heading = hp.heading;
+    playerMesh.visible = false;
+    if (actions & ACTION_ENTER) {
+      heli.exit(player);
+      playerMesh.visible = true;
+    }
+    return;
+  }
+
   if (player.inCar && player.car) {
     const car = player.car;
+    // Nitro: hold Shift while driving a nitro-fitted car for a boost.
+    car.nitroBoost = run && ((car.upgrades && car.upgrades.nitro) || 0) > 0;
     const throttle = move.f;
     const steerInput = move.s; // A = left, D = right (see vehicles.driveCar)
     const impact = driveCar(car, throttle, -steerInput, handbrake, dt, collideCar);
@@ -728,6 +820,9 @@ function stepPlayer(dt, inputOverride) {
   if (actions & ACTION_RELOAD) combat.reload();
   if (actions & ACTION_WEAPON1) combat.switchWeapon('fists');
   if (actions & ACTION_WEAPON2) combat.switchWeapon('pistol');
+  if (actions & ACTION_WEAPON3) combat.switchWeapon('smg');
+  if (actions & ACTION_WEAPON4) combat.switchWeapon('shotgun');
+  if (actions & ACTION_WEAPON5) combat.switchWeapon('rifle');
 }
 
 function nearestParked(maxDist) {
@@ -741,12 +836,24 @@ function nearestParked(maxDist) {
 }
 
 function tryEnterCar() {
+  // The helipad heli comes first: stealing it is the same E key.
+  if (heli && heli.tryEnter(player)) {
+    player.inCar = false;
+    player.car = null;
+    progression.stats.carsStolen += 1;
+    hud.toast('Helicopter — Space climbs, Shift descends, E lands and steps out.');
+    audio.pickup();
+    return;
+  }
   const car = nearestParked(4);
   if (!car) return;
   const isMissionCar = car === missions.missionCar;
   const seen = !isMissionCar && (police.nearestCruiserDistance(player.x, player.z) < 35 || peds.peds.some((p) => Math.hypot(p.x - player.x, p.z - player.z) < 12));
   player.car = car;
   player.inCar = true;
+  // The car drives with whatever the garage fitted to it.
+  const up = garageState.upgrades[car.type] || {};
+  car.upgrades = { engine: up.engine ?? 0, armour: up.armour ?? 0, nitro: up.nitro ?? 0 };
   car.parked = false;
   traffic.parked = traffic.parked.filter((c) => c !== car);
   player.x = car.x;
@@ -811,7 +918,7 @@ function doShoot() {
     audio.gunshot();
     peds.scare(player.x, player.z, 16);
     if (police.stars === 0) police.addStars(1);
-    const officer = police.hitOfficer(player.x, player.z, dir.dx, dir.dz, 70, 34, false);
+    const officer = police.hitOfficer(player.x, player.z, dir.dx, dir.dz, WEAPONS[combat.weapon].range, WEAPONS[combat.weapon].damage, false);
     if (officer && officer.dead) {
       police.addStars(1);
       hud.toast('You killed an officer! Wanted +1');
@@ -832,13 +939,19 @@ const UNIT_CALLSIGNS = ['VIPER-1', 'GULL-2', 'REEF-7', 'HARBOUR-3', 'AIR-1', 'TI
 function updateHud(dt) {
   const nearCar = !player.inCar ? nearestParked(4) : null;
   const nearGarage = Math.hypot(player.x - GARAGE_POS.x, player.z - GARAGE_POS.z) < 40;
+  const nearHeli = heli && !heli.isFlying && heli.nearPad(player.x, player.z, 6) && !player.inCar;
   let hint = '';
-  if (player.inCar) hint = 'W/S drive · A/D steer · Space handbrake · H horn · L lights · E exit';
+  if (heli && heli.isFlying) hint = 'W/S fly · A/D turn · Space climb · Shift descend · E land & exit';
+  else if (player.inCar) hint = 'W/S drive · A/D steer · Space handbrake · H horn · L lights · E exit';
   else if (nearCar) hint = `Press E to take the ${nearCar.spec.name}`;
-  else if (combat.weapon === 'pistol' && combat.ammo === 0) hint = 'Press R to reload';
-  else hint = 'WASD move · Shift run · Space jump · F punch · 2 pistol · M map · P pause';
+  else if (combat.weapon !== 'fists' && combat.ammo === 0) hint = 'Press R to reload';
+  else hint = 'WASD move · Shift run · Space jump · F punch · 1-5 weapons · M map · P pause';
   if (nearGarage && !player.inCar) hint += ' · G — Tess’s garage (upgrades & cars)';
-  const weaponName = combat.weapon === 'fists' ? 'Fists' : WEAPONS.pistol.name;
+  if (nearHeli) hint += ' · E — steal the helicopter';
+  if (player.inCar && player.car && (player.car.upgrades?.nitro ?? 0) > 0) hint += ' · Shift — NITRO';
+  const sideInfo = sideJobs ? sideJobs.info() : null;
+  if (sideInfo) hint = `${sideInfo.text} — ${sideInfo.timer}s · ${hint}`;
+  const weaponName = combat.weaponName;
   if (taxi.state === 'waiting') hint = 'A fare is waiting — stop your taxi by the green marker';
   else if (taxi.state === 'riding') hint = 'Deliver the fare to the green marker';
   else if (player.inCar && player.car && player.car.type === 'taxi') hint = 'Taxi: fares hail you while you drive — watch for the green marker';
@@ -854,6 +967,11 @@ function updateHud(dt) {
     else if (police.roadblocks.length > 0) state = 'ROADBLOCK';
     return { callsign, dist, state };
   });
+  // The air unit reports as AIR-1 with its searchlight state.
+  if (police.heliActive && police.heliPos) {
+    const hd = Math.round(Math.hypot(police.heliPos.x - player.x, police.heliPos.z - player.z));
+    units.push({ callsign: 'AIR-1', dist: hd, state: 'SEARCHLIGHT' });
+  }
   const trace = police.stars > 0 ? Math.max(5, Math.min(98, Math.round(100 - nearest * 0.9))) : 0;
   const mission = missions.current >= 0 ? {
     index: missions.current,
@@ -874,8 +992,9 @@ function updateHud(dt) {
     cash: player.cash,
     stars: police.stars,
     weaponName,
+    ownedWeapons: combat.ownedWeapons(),
     ammoText: combat.weapon === 'fists' ? '' : `${combat.ammo} / ${combat.reserve}${combat.reloading ? ' …' : ''}`,
-    speed: player.inCar && player.car ? player.car.speed : 0,
+    speed: player.inCar && player.car ? player.car.speed : (heli && heli.isFlying ? heli.speed : 0),
     time,
     objective: missions.objectiveText(),
     timer: missions.timerLeft(),
@@ -895,7 +1014,7 @@ function updateHud(dt) {
     trace,
     mission,
     rep: progression.progress,
-    carName: car ? car.spec.name : '',
+    carName: car ? car.spec.name : (heli && heli.isFlying ? 'HELICOPTER' : ''),
     carCondition: car ? Math.max(0, 100 - car.damage * 0.8) : 100,
     gear,
     radioTrack: RADIO_TRACKS[Math.floor(time / 45) % RADIO_TRACKS.length],
@@ -1054,7 +1173,7 @@ function frame(now) {
   // Camera: the title sweep and the chase/orbit rigs, unless a shot holds it.
   if (!staged) {
     const target = { x: player.x, y: player.y, z: player.z };
-    renderer.updateCamera(1 / 60, target, player.heading, player.inCar, input.lookBack(), screen, time);
+    renderer.updateCamera(1 / 60, target, player.heading, player.inCar || (heli && heli.isFlying), input.lookBack(), screen, time);
   }
   renderer.draw();
 }
@@ -1075,6 +1194,8 @@ window.__solmar = {
   get police() { return police; },
   get missions() { return missions; },
   get taxi() { return taxi; },
+  get heli() { return heli; },
+  get sideJobs() { return sideJobs; },
   get progression() { return progression; },
   get garage() { return garage; },
   get garageState() { return garageState; },

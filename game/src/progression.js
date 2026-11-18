@@ -45,6 +45,10 @@ export function createProgression(saved) {
     escapes: s.escapes ?? 0,
     faresDone: s.fares ?? 0,
     taxiEarned: s.taxiEarned ?? 0,
+    deliveriesDone: s.deliveriesDone ?? 0,
+    deliveryEarned: s.deliveryEarned ?? 0,
+    racesWon: s.racesWon ?? 0,
+    stuntsDone: s.stuntsDone ?? 0,
     dropsGot: s.dropsGot ?? (Array.isArray(s.drops) ? s.drops.length : 0),
     timePlayed: s.timePlayed ?? s.time ?? 0,
   };
@@ -87,6 +91,10 @@ export function createProgression(saved) {
       escapes: stats.escapes,
       fares: stats.faresDone,
       taxiEarned: stats.taxiEarned,
+      deliveriesDone: stats.deliveriesDone,
+      deliveryEarned: stats.deliveryEarned,
+      racesWon: stats.racesWon,
+      stuntsDone: stats.stuntsDone,
       timePlayed: stats.timePlayed,
     };
   }

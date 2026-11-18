@@ -31,7 +31,7 @@
   #stage-text { font-size: 11px; color: #cbb98f; }
   #mission-next { font-size: 12px; color: #f5efe4; margin-top: 2px; }
   #district { font-size: 11px; color: #cbb98f; margin-top: 4px; font-style: italic; }
-  #police-panel { position: absolute; top: 190px; left: 14px; min-width: 250px; font-size: 13px; }
+  #police-panel { position: absolute; top: 282px; left: 14px; min-width: 250px; font-size: 13px; }
   .police-head { font-weight: 800; color: #3a86ff; letter-spacing: 0.5px; margin-bottom: 5px; }
   .police-row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
   .police-state { color: #ff9d5c; font-weight: 700; }
@@ -45,9 +45,11 @@
   #clock { display: none; }
   #radio { font-size: 12px; color: #cbb98f; text-align: right; text-shadow: 0 1px 4px rgba(0,0,0,0.9); margin-top: 2px; }
   #drops { font-size: 12px; color: #7dd87d; text-align: right; text-shadow: 0 1px 4px rgba(0,0,0,0.9); margin-top: 2px; }
-  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 16px; font-weight: 600; text-align: center; max-width: 40%; }
-  #timer { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: 800; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
-  #fare { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600; color: #7dd87d; text-shadow: 0 1px 4px rgba(0,0,0,0.9); text-align: center; max-width: 46%; }
+  /* The objective banner sits in the gap between the mission panel and
+     the minimap — centred it printed straight over the mission title. */
+  #objective { position: absolute; top: 14px; left: 680px; font-size: 16px; font-weight: 600; text-align: left; max-width: 300px; }
+  #timer { position: absolute; top: 168px; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: 800; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+  #fare { position: absolute; top: 198px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600; color: #7dd87d; text-shadow: 0 1px 4px rgba(0,0,0,0.9); text-align: center; max-width: 46%; }
   #weapon-box { position: absolute; bottom: 16px; right: 16px; text-align: right; font-size: 18px; }
   #car-name { font-size: 15px; font-weight: 700; color: #ffd21f; }
   #speed { font-size: 34px; font-weight: 800; }
@@ -63,15 +65,15 @@
   #hint { position: absolute; bottom: 16px; left: 16px; font-size: 13px; color: #ffe9a8; max-width: 300px; }
   #popups { position: absolute; bottom: 120px; right: 16px; text-align: right; }
   .popup { font-size: 17px; font-weight: 800; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.9); margin-top: 4px; }
-  #toast { position: absolute; top: 130px; left: 50%; transform: translateX(-50%); font-size: 19px; font-weight: 700; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+  #toast { position: absolute; top: 228px; left: 50%; transform: translateX(-50%); font-size: 19px; font-weight: 700; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
   #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
     background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 20, 20, 0.55) 100%); }
   .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(12, 8, 5, 0.55); }
-  .card { background: rgba(20, 16, 12, 0.88); border: 1px solid rgba(255, 180, 94, 0.5); border-radius: 12px; padding: 18px 30px; max-width: 640px; max-height: 94vh; overflow-y: auto; text-align: center; }
-  .card h1 { margin: 0 0 4px; font-size: 44px; letter-spacing: 4px; color: #ffb45e; text-shadow: 0 3px 18px rgba(255, 140, 40, 0.6); }
+  .card { background: rgba(20, 16, 12, 0.88); border: 1px solid rgba(255, 180, 94, 0.5); border-radius: 12px; padding: 12px 30px; max-width: 640px; max-height: 94vh; overflow-y: auto; text-align: center; }
+  .card h1 { margin: 0 0 4px; font-size: 36px; letter-spacing: 4px; color: #ffb45e; text-shadow: 0 3px 18px rgba(255, 140, 40, 0.6); }
   .card h2 { margin: 0 0 12px; font-size: 30px; color: #ffb45e; }
-  .card p { color: #cbb98f; line-height: 1.5; margin: 8px 0; }
-  .card .controls { font-size: 13px; text-align: left; columns: 2; column-gap: 28px; margin: 14px 0; }
+  .card p { color: #cbb98f; line-height: 1.5; margin: 6px 0; }
+  .card .controls { font-size: 12px; text-align: left; columns: 2; column-gap: 28px; margin: 8px 0; }
   .card button { pointer-events: auto; display: block; width: 100%; margin: 6px 0; padding: 10px; font-size: 16px; font-weight: 700; color: #1a120c; background: #ffb45e; border: none; border-radius: 8px; cursor: pointer; }
   .card button:hover { background: #ffc98a; }
   .card button:disabled { background: #6b6258; color: #cbb98f; cursor: default; }
@@ -79,14 +81,15 @@
   #mission-list button { font-size: 14px; font-weight: 600; padding: 8px; text-align: left; }
   .screen, .card button { pointer-events: auto; }
   #poster { width: 100%; border-radius: 10px; border: 1px solid rgba(255,180,94,0.5); display: block; margin-bottom: 10px; }
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0; }
   .pill { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: rgba(255,180,94,0.18); border: 1px solid rgba(255,180,94,0.5); color: #ffd9a0; }
-  .cast { display: flex; gap: 12px; justify-content: center; margin: 10px 0 4px; }
+  .cast { display: flex; gap: 12px; justify-content: center; margin: 6px 0 2px; }
   .cast-member { font-size: 12px; color: #cbb98f; text-align: center; }
-  .cast-face { width: 52px; height: 52px; border-radius: 50%; margin: 0 auto 4px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: #1a120c; border: 2px solid rgba(245,239,228,0.5); }
+  .cast-face { width: 46px; height: 46px; border-radius: 50%; margin: 0 auto 4px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: #1a120c; border: 2px solid rgba(245,239,228,0.5); }
   #save-summary { font-size: 14px; font-weight: 700; color: #7dd87d; margin: 6px 0; }
-  /* Full-screen map + garage overlays */
-  .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(10, 8, 6, 0.94); display: flex; flex-direction: column; padding: 16px 24px; overflow-y: auto; }
+  /* Full-screen map + garage overlays: solid background, so the HUD
+     underneath cannot ghost through the map screen. */
+  .overlay { position: fixed; inset: 0; z-index: 20; background: #0d0a08; display: flex; flex-direction: column; padding: 16px 24px; overflow-y: auto; }
   .overlay h2 { margin: 0 0 4px; color: #ffb45e; letter-spacing: 2px; }
   .overlay .sub { color: #cbb98f; font-size: 13px; margin-bottom: 12px; }
   .map-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -163,7 +166,7 @@
 
 <div id="title-screen" class="screen">
   <div class="card">
-    <canvas id="poster" width="580" height="200"></canvas>
+    <canvas id="poster" width="580" height="150"></canvas>
     <h1>SOLMAR BAY</h1>
     <p>Jace Moreno is out of prison and back in his home city. Tess Alvarez runs jobs from her garage. Councillor Dario Vane owns the port — and the police captain. Take the city back, one job at a time.</p>
     <div class="pills">

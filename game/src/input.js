@@ -14,6 +14,9 @@ export const ACTION_MUTE = 128;
 export const ACTION_RELOAD = 256;
 export const ACTION_WEAPON1 = 512;
 export const ACTION_WEAPON2 = 1024;
+export const ACTION_WEAPON3 = 16384;
+export const ACTION_WEAPON4 = 32768;
+export const ACTION_WEAPON5 = 65536;
 export const ACTION_RESTART = 2048;
 export const ACTION_MAP = 4096;
 export const ACTION_GARAGE = 8192;
@@ -32,6 +35,9 @@ const KEY_ACTIONS = {
   KeyR: ACTION_RELOAD,
   Digit1: ACTION_WEAPON1,
   Digit2: ACTION_WEAPON2,
+  Digit3: ACTION_WEAPON3,
+  Digit4: ACTION_WEAPON4,
+  Digit5: ACTION_WEAPON5,
   KeyT: ACTION_RESTART,
 };
 

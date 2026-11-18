@@ -97,24 +97,44 @@ function newCar(type, x, z, heading, colour) {
     ai: false, axis: 'x', dir: 1, lane: 0, cruise: 12, waitT: 0, parked: false,
     // Police pursuit state.
     pursuit: false, boxedT: 0,
+    // Garage upgrades (engine / armour / nitro tiers, 0 = stock).
+    upgrades: { engine: 0, armour: 0, nitro: 0 },
+    nitroBoost: false,
   };
 }
 
+// Damage to a car, soaked by its armour upgrade: each armour tier
+// shrugs off 15% of the hit. The player's car and police rams both
+// go through here so armour matters everywhere.
+export function applyCarDamage(car, amount) {
+  const soak = 1 - 0.15 * ((car.upgrades && car.upgrades.armour) || 0);
+  car.damage += amount * soak;
+  return amount * soak;
+}
+
 // Arcade driving: accelerate, brake, reverse, steering that tightens with
-// speed, handbrake slides. Returns the impact speed of any building hit.
+// speed, handbrake slides. Garage upgrades change the car: each engine
+// tier adds 12% top speed and 15% acceleration, nitro (while the boost
+// flag is held) adds a burst of top speed and throttle, and each armour
+// tier soaks 15% of collision damage. Returns the impact speed of any
+// building hit.
 export function driveCar(car, throttle, steerInput, handbrake, dt, collide) {
   const spec = car.spec;
+  const up = car.upgrades || { engine: 0, armour: 0, nitro: 0 };
+  const nitroOn = car.nitroBoost && up.nitro > 0;
+  const topSpeed = spec.topSpeed * (1 + 0.12 * up.engine) + (nitroOn ? 6 * up.nitro : 0);
+  const accel = spec.accel * (1 + 0.15 * up.engine) * (nitroOn ? 1.6 : 1);
   const maxSteer = 0.55 / (1 + Math.abs(car.speed) * 0.045);
   const targetSteer = steerInput * maxSteer * (handbrake ? 1.5 : 1);
   car.steer += (targetSteer - car.steer) * Math.min(1, dt * 8);
-  if (throttle > 0) car.speed += spec.accel * throttle * dt;
+  if (throttle > 0) car.speed += accel * throttle * dt;
   else if (throttle < 0) {
     if (car.speed > 0.5) car.speed -= spec.brake * dt;
-    else car.speed += spec.accel * 0.55 * dt; // reverse
+    else car.speed += accel * 0.55 * dt; // reverse
   }
   if (handbrake) car.speed -= Math.sign(car.speed) * 12 * dt;
   car.speed -= car.speed * (handbrake ? 0.25 : 0.55) * dt; // drag / rolling resistance
-  car.speed = Math.max(-9, Math.min(spec.topSpeed, car.speed));
+  car.speed = Math.max(-9, Math.min(topSpeed, car.speed));
   if (Math.abs(car.speed) < 0.05 && throttle === 0) car.speed = 0;
   car.heading += (car.speed / spec.length) * Math.tan(car.steer) * dt * (handbrake ? 1.6 : 1);
   const nx = car.x + Math.sin(car.heading) * car.speed * dt;
@@ -125,7 +145,7 @@ export function driveCar(car, throttle, steerInput, handbrake, dt, collide) {
     if (hit) {
       impact = Math.abs(car.speed);
       car.speed *= -0.25;
-      car.damage += impact * 2.2;
+      applyCarDamage(car, impact * 2.2);
     }
   }
   if (!impact) { car.x = nx; car.z = nz; }
