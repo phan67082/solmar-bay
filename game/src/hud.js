@@ -85,6 +85,7 @@ export function createHud(doc) {
   const fareEl = el('fare');
   const hintEl = el('hint');
   const toastEl = el('toast');
+  const crosshair = el('crosshair'); // centre aim mark, gun out on foot
   const vignette = el('vignette');
   const radioEl = el('radio');
   const dropsEl = el('drops');
@@ -217,6 +218,9 @@ export function createHud(doc) {
       slotsEl.appendChild(span);
     });
     weaponEl.textContent = state.inCar ? '—' : `${state.weaponName}  ${state.ammoText}`;
+    // Aim mark only when it means something: on foot, gun in hand.
+    const gunOut = !state.inCar && state.weaponName && state.weaponName !== 'Fists';
+    crosshair.style.display = gunOut ? 'block' : 'none';
     // Car panel: name, condition bar, gear, big speed (also used for
     // the helicopter while flying).
     if (state.carName) {

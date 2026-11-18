@@ -50,21 +50,43 @@ export function stageShot(name, game) {
     // A shootout in the plaza at dusk: Jace on foot with the rifle,
     // Vane's crew holding the fountain, neon signs lit behind them.
     // The mission itself supplies the six rivals, so the panel, the
-    // objective and the dialogue bar all read as one real job.
-    game.setSky(20.3);
+    // objective and the dialogue bar all read as one real job. The crew
+    // is re-formed into a firing line across the fountain — every rival
+    // in frame, close enough to read — and a full volley is frozen
+    // mid-flight (muzzle flashes, tracers, health bars) so the frame
+    // reads as a shootout at a glance. The sky stays at golden dusk
+    // (19.3) rather than full night, so the plaza floor stays lit and
+    // the foreground cannot fall into black shadow.
+    game.setSky(19.3);
     game.setScreen(SCREEN_PLAY);
     game.missions.setUnlocked(5);
     game.missions.start(3);
-    game.placePlayerOnFoot(-30, -12, Math.PI);
+    game.placePlayerOnFoot(-28, -12.5, Math.PI);
     game.combat.pickupWeapon('rifle');
     game.combat.switchWeapon('rifle');
     game.police.setStars(0);
     // Let the rivals open fire for a couple of seconds so the fight
     // reads as live, then hold the frame.
     for (let i = 0; i < 150; i += 1) game.stepSim(STEP, null, true);
-    // Three-quarter view from behind the player's right shoulder: Jace
-    // in the lower frame, the fountain and the crew across the plaza.
-    game.stageCamera({ x: -22, y: 4.2, z: 0 }, { x: -33, y: 1.4, z: -30 });
+    // Re-form the live mission crew into a firing line due south of the
+    // fountain: a straight east-west rank, so no rival hides behind
+    // another from the camera (a diagonal rank put two of them on the
+    // same sight-line). All six sit ~11 m from the fountain centre,
+    // clear of its 7 m rim, 7.5 m from Jace and 13–19 m from the lens.
+    const rank = [[-37, -20], [-32.5, -20], [-28, -20], [-23.5, -20], [-19, -20], [-14.5, -20]];
+    const crew = game.combat.enemies.filter((e) => !e.dead && e.tag === 'mission');
+    crew.forEach((e, i) => {
+      const spot = rank[i % rank.length];
+      game.combat.placeEnemy(e, spot[0], spot[1]);
+    });
+    // Freeze the volley: enemy muzzle flashes + tracers at Jace, Jace's
+    // own rifle flash + tracer at the nearest rival, health bars up.
+    game.combat.stageFx(game.player);
+    // Over-the-shoulder from behind Jace's right side: Jace large in
+    // the lower frame, the whole firing line across the plaza ahead,
+    // the fountain and the downtown towers behind them, sky above —
+    // the plaza floor fills the bottom instead of a black void.
+    game.stageCamera({ x: -23, y: 3.2, z: -4 }, { x: -30.5, y: 1.3, z: -30 });
     return;
   }
   if (name === 'boulevard') {

@@ -132,11 +132,19 @@ function drawTitlePoster() {
   for (const [fx, fh] of towers) {
     c.fillRect(W * fx, H * 0.62 - H * fh, W * 0.07, H * fh);
   }
-  // Lit windows.
+  // Lit windows — placed by a tiny seeded generator (LCG) rather than
+  // Math.random, so the poster is pixel-identical every time it shows.
+  let seed = 1234567;
+  const nextRand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   c.fillStyle = '#ffd21f';
   for (let i = 0; i < 40; i += 1) {
-    c.fillRect(W * (0.06 + Math.random() * 0.9), H * (0.28 + Math.random() * 0.3), 3, 4);
+    c.fillRect(W * (0.06 + nextRand() * 0.9), H * (0.28 + nextRand() * 0.3), 3, 4);
   }
+  // Police helicopter silhouette crossing the sky — the chase is never far.
+  c.fillStyle = '#2e1a33';
+  c.beginPath(); c.ellipse(W * 0.86, H * 0.16, 14, 5, 0, 0, Math.PI * 2); c.fill();
+  c.fillRect(W * 0.86 - 18, H * 0.16 - 8, 36, 2); // rotor
+  c.fillRect(W * 0.86 + 12, H * 0.16 - 1, 12, 2); // tail boom
   // Palm silhouettes on the beach side.
   c.strokeStyle = '#1c2f1a';
   c.lineWidth = 4;
@@ -168,9 +176,12 @@ function drawTitlePoster() {
   c.shadowBlur = 10;
   c.fillText('SOLMAR BAY', W / 2, H * 0.30);
   c.shadowBlur = 0;
+  // A dark band behind the tagline, so no tower edge strikes through it.
+  c.fillStyle = 'rgba(20,16,12,0.45)';
+  c.fillRect(0, H * 0.42, W, H * 0.12);
   c.fillStyle = '#f5efe4';
   c.font = 'italic 15px system-ui, sans-serif';
-  c.fillText('Six jobs. One city. Take it back.', W / 2, H * 0.48);
+  c.fillText('Six jobs. One city. Take it back.', W / 2, H * 0.50);
 }
 
 // What a mission stage needs from the world: spawn/remove its car and

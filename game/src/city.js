@@ -26,6 +26,15 @@ function facadeTexture(rng, base) {
       ctx.fillRect(10 + col * 23, 18 + row * 23, 15, 16);
     }
   }
+  // Street level: a dark shopfront band with one lit doorway, plus a
+  // pale cornice line under the roof — the box reads as a building with
+  // a ground floor instead of a flat slab.
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(0, 228, 128, 28);
+  ctx.fillStyle = '#ffd98a';
+  ctx.fillRect(56, 232, 16, 24);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(0, 12, 128, 3);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -233,6 +242,19 @@ export function buildCity(rng) {
           neon.position.set(x, h - 1.5, z + d / 2 + 0.3);
           group.add(neon);
         }
+        // Rooftop clutter and vertical glow: an AC box on about half
+        // the roofs, and a neon strip down the face of tall downtown
+        // towers — the skyline reads varied from street and from above.
+        if (rng() < 0.5) {
+          const ac = box(Math.min(w * 0.3, 3), 1.1, Math.min(d * 0.3, 2.4), darkMat, x - w / 4, h + 1.05, z - d / 4);
+          ac.castShadow = false;
+        }
+        if (h >= 30 && rng() < 0.45) {
+          const strip = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: pick(rng, [0xff5a7a, 0x37e0c8, 0xffb02e, 0xb48ae0]) }));
+          strip.scale.set(0.5, h * 0.7, 0.5);
+          strip.position.set(x + w / 2 + 0.3, h * 0.45, z);
+          group.add(strip);
+        }
         // Ground-floor shop awning on a street-facing side.
         if (rng() < 0.5 && h < 24) {
           const awn = box(Math.min(w * 0.7, 10), 0.3, 2.4, new THREE.MeshLambertMaterial({ color: pick(rng, [0xc22730, 0x1f6fb2, 0x2e7d4f, 0xe08a2e]) }), x, 3.4, z + d / 2 + 1.2);
@@ -346,6 +368,43 @@ export function buildCity(rng) {
     streetlight(x + 30 > 360 ? x - 30 : x + 30, 173);
   }
 
+  // --- plaza lamps, planters, boulevard benches (street furniture) ----
+  // Four short lamp posts on the plaza ring, between the palms, so the
+  // square reads as lived-in at dusk rather than an empty disc.
+  for (let i = 0; i < 4; i += 1) {
+    const ang = ((i + 0.5) / 4) * Math.PI * 2;
+    const lx = plaza.x + Math.cos(ang) * 26;
+    const lz = plaza.z + Math.sin(ang) * 26;
+    const pole = new THREE.Mesh(cylGeo, poleMat);
+    pole.scale.set(0.14, 4.2, 0.14);
+    pole.position.set(lx, 2.1, lz);
+    group.add(pole);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), lampMat);
+    lamp.position.set(lx, 4.3, lz);
+    group.add(lamp);
+  }
+  // Stone planters with shrubs: a ring around the plaza (offset from the
+  // palms) plus downtown corners — all inside block edges, clear of the
+  // sidewalk lines pedestrians walk and of the roads.
+  const shrubMat = new THREE.MeshLambertMaterial({ color: 0x3f7d3a });
+  function planter(x, z) {
+    box(1.7, 0.6, 1.7, stoneMat, x, 0.3, z);
+    const shrub = box(1.25, 0.8, 1.25, shrubMat, x, 0.95, z);
+    shrub.castShadow = false;
+    addCollider(x, z, 0.9, 0.9);
+  }
+  for (let i = 0; i < 8; i += 1) {
+    const ang = ((i + 0.5) / 8) * Math.PI * 2;
+    planter(plaza.x + Math.cos(ang) * 20.5, plaza.z + Math.sin(ang) * 20.5);
+  }
+  for (const [px, pz] of [[-50, -50], [70, -50], [-50, 70], [70, 70], [-110, 10], [130, -110], [-170, 130], [190, 130]]) {
+    planter(px, pz);
+  }
+  // Benches along the boulevard's east sidewalk, facing the sea.
+  for (const bz of [-300, -180, -60, 60, 180, 300]) {
+    box(1, 0.5, 3, woodMat, -350.5, 0.5, bz);
+  }
+
   // --- traffic lights at six intersections ----------------------------------
   function trafficLight(x, z) {
     const pole = new THREE.Mesh(cylGeo, poleMat);
@@ -371,10 +430,12 @@ export function buildCity(rng) {
     ['SOLMAR BAY', '#c22730', '#ffe9a8'],
     ['GOLDEN HOUR, EVERY HOUR', '#1f6fb2', '#f5f5f0'],
     ['VISIT THE MARINA', '#2e7d4f', '#ffe9a8'],
+    ['SUNSET TAPES — FIND ALL 20', '#7b2d8e', '#ffe9a8'],
+    ['DRIVE THE BAY', '#e08a2e', '#1a120c'],
   ];
   slogans.forEach(([text, bg, fg], i) => {
-    const bx = [-285, 75, 255][i];
-    const bz = [-285, 135, -225][i];
+    const bx = [-285, 75, 255, -15, 315][i];
+    const bz = [-285, 135, -225, 285, 45][i];
     box(0.8, 12, 0.8, poleMat, bx, 6, bz);
     const board = new THREE.Mesh(new THREE.PlaneGeometry(18, 4), new THREE.MeshBasicMaterial({ map: signTexture(text, bg, fg) }));
     board.position.set(bx, 12.5, bz);
@@ -409,6 +470,10 @@ export function buildCity(rng) {
     ['CLUB VOLTAGE', '#1f6fb2', '#f5f5f0', -348, 240, 0],
     ['HOTEL MIRAMAR', '#2e7d4f', '#ffe9a8', 168, -348, Math.PI / 2],
     ['BOLT BURGER', '#e08a2e', '#1a120c', -168, 348, 0],
+    ['FLAMINGO FM', '#b48ae0', '#ffe9a8', -168, -348, Math.PI / 2],
+    ['FARMACIA SOL', '#2e7d4f', '#f5f5f0', 288, 12, 0],
+    ['TACO LOCO', '#c22730', '#ffe9a8', -108, 168, Math.PI / 2],
+    ['ZAPATOS ALBA', '#1f6fb2', '#ffe9a8', 228, -228, 0],
   ];
   for (const [text, bg, fg, sx, sz, ry] of neonSigns) {
     box(0.5, 11, 0.5, poleMat, sx, 5.5, sz);
@@ -425,7 +490,7 @@ export function buildCity(rng) {
     addCollider(sx, sz, 1, 1);
   }
   // Market stalls on the plaza: striped awnings, counters, crates.
-  for (const [sx, sz, awnColour] of [[-14, -16, 0xc22730], [-46, -42, 0x1f6fb2]]) {
+  for (const [sx, sz, awnColour] of [[-14, -16, 0xc22730], [-46, -42, 0x1f6fb2], [-46, -16, 0x2e7d4f], [-14, -44, 0xe08a2e]]) {
     box(5, 0.3, 3.5, new THREE.MeshLambertMaterial({ color: awnColour }), sx, 2.6, sz);
     box(4.6, 1.0, 2.6, woodMat, sx, 0.5, sz);
     box(1.2, 1.2, 1.2, woodMat, sx + 3, 0.6, sz + 2);

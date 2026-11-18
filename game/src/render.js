@@ -76,7 +76,7 @@ export function createRenderer(canvas) {
     [12, 0x3a7ab8, 0x9fd8e8, 0xcfe8f0, 0xfff2c8, 2.6, 0.9, 320],
     [16, 0x4a6ab0, 0xffd9a8, 0xffe0b8, 0xffe0a0, 2.4, 0.85, 220],
     [18.7, 0x7b2d8e, 0xffb45e, 0xffd9a8, 0xffb45e, 2.2, 0.75, 95],
-    [20.5, 0x2a1a4e, 0xff5a7a, 0xc98a9a, 0xff7a5e, 1.4, 0.55, 55],
+    [20.5, 0x2a1a4e, 0xff5a7a, 0xc98a9a, 0xff7a5e, 1.7, 0.7, 55], // dusk: sun/hemi lifted so shadowed ground still reads
     [22, 0x0e1230, 0x3a2a5e, 0x2a2438, 0x8a7ab8, 0.7, 0.35, 20],
     [24, 0x3a2a5e, 0xff8a7a, 0x8a6a7a, 0xff9a7a, 1.2, 0.5, 40],
   ];

@@ -66,6 +66,12 @@
   #popups { position: absolute; bottom: 120px; right: 16px; text-align: right; }
   .popup { font-size: 17px; font-weight: 800; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.9); margin-top: 4px; }
   #toast { position: absolute; top: 228px; left: 50%; transform: translateX(-50%); font-size: 19px; font-weight: 700; color: #ffd21f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+  /* Centre crosshair (two thin bars + dot gap), shown on foot while a
+     gun is out, so a shootout always has an aim point. */
+  #crosshair { position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); display: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.92); box-shadow: 0 0 3px rgba(0,0,0,0.9); }
+  #crosshair::before { left: 12px; top: 2px; width: 2px; height: 22px; }
+  #crosshair::after { top: 12px; left: 2px; height: 2px; width: 22px; }
   #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
     background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 20, 20, 0.55) 100%); }
   .screen { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(12, 8, 5, 0.55); }
@@ -158,6 +164,7 @@
   <div id="timer" class="hidden"></div>
   <div id="fare" class="hidden"></div>
   <div id="weapon-box"><div id="car-name"></div><div><span id="speed"></span> <span id="gear"></span></div><div id="weapon">Fists</div><div id="weapon-slots"></div></div>
+  <div id="crosshair"></div>
   <div id="dialogue" class="panel hidden"><canvas id="portrait" width="48" height="48"></canvas><div><div id="dialogue-who"></div><div id="dialogue-line"></div></div></div>
   <div id="popups"></div>
   <div id="hint"></div>

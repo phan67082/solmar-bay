@@ -41,9 +41,12 @@ export const CAR_TYPES = {
   police: { name: 'Police cruiser', topSpeed: 34, accel: 16, brake: 34, grip: 2.7, length: 4.5, width: 1.9, height: 1.45, colours: [0xf0f0f0] },
 };
 
-export const TRAFFIC_COUNT = 14;
-export const PARKED_COUNT = 16;
-export const PED_COUNT = 24;
+// A busier city for the polished build: more traffic on the roads,
+// more parked cars at the kerbs, more pedestrians on the sidewalks.
+// (Counts only — the seeded RNG in the world builders is untouched.)
+export const TRAFFIC_COUNT = 20;
+export const PARKED_COUNT = 20;
+export const PED_COUNT = 36;
 export const CASH_DROP_COUNT = 20;
 
 export const WEAPONS = {

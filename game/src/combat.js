@@ -54,11 +54,95 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
   const pickups = [];
   const flashLight = new THREE.PointLight(0xffc860, 0, 14);
   scene.add(flashLight);
-  const flashSprite = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.4, 1.4),
-    new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, side: THREE.DoubleSide }),
-  );
+
+  // Tracer rounds: a pool of thin bright bars stretched muzzle-to-target
+  // that flare for a tenth of a second. In live play update() fades
+  // them; in a staged screenshot they stay frozen in the frame, which
+  // is what makes a shootout read as a shootout at a glance.
+  const tracers = [];
+  for (let i = 0; i < 12; i += 1) {
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0 }),
+    );
+    bar.visible = false;
+    scene.add(bar);
+    tracers.push({ mesh: bar, life: 0 });
+  }
+  let nextTracer = 0;
+  const aimPoint = new THREE.Vector3();
+  function fireTracer(x1, y1, z1, x2, y2, z2) {
+    const slot = tracers[nextTracer];
+    nextTracer = (nextTracer + 1) % tracers.length;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const dz = z2 - z1;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 0.5) return;
+    slot.mesh.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+    aimPoint.set(x2, y2, z2);
+    slot.mesh.lookAt(aimPoint);
+    slot.mesh.scale.set(0.06, 0.06, len);
+    slot.mesh.material.opacity = 1;
+    slot.mesh.visible = true;
+    slot.life = 0.12;
+  }
+
+  // One shared radial glow texture for muzzle flashes: a sprite always
+  // faces the camera, so a flash reads from any angle.
+  function glowTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    g.addColorStop(0, 'rgba(255,240,180,1)');
+    g.addColorStop(0.4, 'rgba(255,190,60,0.9)');
+    g.addColorStop(1, 'rgba(255,120,20,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+  const glowTex = glowTexture();
+
+  // The player's muzzle flash: a sprite (always faces the camera) using
+  // the same radial glow as the enemies' flashes — a flat plane read as
+  // a hard white slab from a low camera; a sprite reads as fire.
+  const flashSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, depthWrite: false }));
+  flashSprite.scale.set(1.3, 1.3, 1);
   scene.add(flashSprite);
+
+  // An enemy's health bar: a small canvas sprite above the head,
+  // redrawn only when the enemy's health changes.
+  function makeHealthBar() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 10;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sprite.scale.set(1.1, 0.17, 1);
+    sprite.visible = false;
+    scene.add(sprite);
+    return { canvas, tex, sprite, lastHp: -1 };
+  }
+  function paintHealthBar(bar, hp) {
+    if (bar.lastHp === hp) return;
+    bar.lastHp = hp;
+    const ctx = bar.canvas.getContext('2d');
+    const f = Math.max(0, hp / 100);
+    ctx.clearRect(0, 0, 64, 10);
+    ctx.fillStyle = 'rgba(10,10,10,0.85)';
+    ctx.fillRect(0, 0, 64, 10);
+    ctx.fillStyle = f > 0.5 ? '#39d353' : f > 0.25 ? '#ffb02e' : '#e5534b';
+    ctx.fillRect(2, 2, 60 * f, 6);
+    ctx.strokeStyle = 'rgba(245,239,228,0.9)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, 63, 9);
+    bar.tex.needsUpdate = true;
+  }
 
   // Hit sparks: a small pool of bright quads that flare and fade.
   const sparks = [];
@@ -145,21 +229,44 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     const mesh = makeEnemyMesh();
     mesh.position.set(x, 0, z);
     scene.add(mesh);
+    // Muzzle flash sprite at the gun, and a health bar over the head —
+    // both are what make a distant rival read as an enemy, not a prop.
+    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.95, depthWrite: false }));
+    flash.scale.set(1.3, 1.3, 1);
+    flash.visible = false;
+    scene.add(flash);
+    const bar = makeHealthBar();
+    paintHealthBar(bar, hp);
+    bar.sprite.visible = true;
     const cover = coverPoint(x, z);
     const enemy = {
       x, z, hp, mesh, shootT: 1 + Math.random() * 1.5, fleeing: false,
       dead: false, flashT: 0, tag,
       coverX: cover ? cover.x : null, coverZ: cover ? cover.z : null,
-      inCover: false,
+      inCover: false, flash, bar,
     };
     enemies.push(enemy);
     return enemy;
+  }
+
+  // Move a live enemy (screenshot staging re-forms the crew into a
+  // firing line the camera can actually see).
+  function placeEnemy(e, x, z) {
+    e.x = x;
+    e.z = z;
+    e.mesh.position.set(x, 0, z);
+    const cover = coverPoint(x, z);
+    e.coverX = cover ? cover.x : null;
+    e.coverZ = cover ? cover.z : null;
+    e.inCover = false;
   }
 
   function clearEnemies(tag) {
     for (let i = enemies.length - 1; i >= 0; i -= 1) {
       if (tag === undefined || enemies[i].tag === tag) {
         scene.remove(enemies[i].mesh);
+        scene.remove(enemies[i].flash);
+        scene.remove(enemies[i].bar.sprite);
         enemies.splice(i, 1);
       }
     }
@@ -210,6 +317,8 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     // off the wall instead.
     const pellets = spec.pellets || 1;
     let hitAny = null;
+    let nearestHit = null;
+    let nearestHitD = spec.range;
     for (let p = 0; p < pellets; p += 1) {
       const spread = spec.spread || 0;
       const ang = (Math.random() - 0.5) * 2 * spread;
@@ -239,7 +348,12 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
       spawnSpark(best.x, 1.3, best.z);
       if (best.hp <= 0) kill(best);
       hitAny = best;
+      if (bestD < nearestHitD) { nearestHitD = bestD; nearestHit = best; }
     }
+    // One bright tracer down the aim line, ending at the first enemy
+    // hit — or at full range on a miss, so a miss still reads as fire.
+    if (nearestHit) fireTracer(ox + dx, oy, oz + dz, nearestHit.x, 1.3, nearestHit.z);
+    else fireTracer(ox + dx, oy, oz + dz, ox + dx * spec.range, oy, oz + dz * spec.range);
     return hitAny;
   }
 
@@ -247,6 +361,8 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     e.dead = true;
     e.mesh.rotation.x = -Math.PI / 2;
     e.mesh.position.y = 0.35;
+    e.flash.visible = false;
+    e.bar.sprite.visible = false;
     if (weapon !== 'fists') reserves[weapon] += 6; // fallen enemies drop spare rounds
     if (e.tag === 'hotspot' && aliveCount('hotspot') === 0) {
       // Every hotspot crew is down: each spawned hotspot counts as cleared.
@@ -283,6 +399,13 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
         s.life -= dt;
         s.mesh.material.opacity = Math.max(0, s.life / 0.15);
         if (s.life <= 0) s.mesh.visible = false;
+      }
+    }
+    for (const t of tracers) {
+      if (t.life > 0) {
+        t.life -= dt;
+        t.mesh.material.opacity = Math.max(0, t.life / 0.12);
+        if (t.life <= 0) t.mesh.visible = false;
       }
     }
     if (reloadT > 0) {
@@ -344,6 +467,7 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
             if (e.shootT <= 0) {
               e.shootT = 1.0 + Math.random() * 0.6;
               e.flashT = 0.07;
+              fireTracer(e.x, 1.3, e.z, playerPos.x, 1.4, playerPos.z);
               if (Math.random() < Math.min(0.6, Math.max(0.1, 0.45 - d * 0.006) * 1.25)) {
                 spawnSpark(playerPos.x, 1.4, playerPos.z);
                 if (onPlayerHit) onPlayerHit(8 + Math.floor(Math.random() * 7));
@@ -356,6 +480,7 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
         if (e.shootT <= 0) {
           e.shootT = 1.4 + Math.random() * 0.8;
           e.flashT = 0.07;
+          fireTracer(e.x, 1.3, e.z, playerPos.x, 1.4, playerPos.z);
           // Hit chance falls with distance; armour soaks first.
           if (Math.random() < Math.max(0.08, 0.45 - d * 0.006)) {
             spawnSpark(playerPos.x, 1.4, playerPos.z);
@@ -366,6 +491,55 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
       e.mesh.position.set(e.x, 0, e.z);
       e.mesh.rotation.y = Math.atan2(playerPos.x - e.x, playerPos.z - e.z);
       e.mesh.children[0].material.color.setHex(e.flashT > 0 ? 0xffffff : ENEMY_SHIRT);
+      // Muzzle flash sprite at the gun tip while the shot is live, and
+      // the health bar tracking the head — both face the camera.
+      if (e.flashT > 0) {
+        const gy = e.mesh.rotation.y;
+        e.flash.position.set(e.x + Math.sin(gy) * 0.45, 1.3, e.z + Math.cos(gy) * 0.45);
+        e.flash.visible = true;
+      } else e.flash.visible = false;
+      paintHealthBar(e.bar, e.hp);
+      e.bar.sprite.position.set(e.x, 2.2, e.z);
+    }
+  }
+
+  // Freeze a full volley in place for a screenshot: every live enemy
+  // shows its muzzle flash and a tracer at the player, and the player's
+  // own muzzle flashes with a tracer at the nearest enemy. Nothing here
+  // runs a timer — in a staged scene the sim is stopped, so the frame
+  // stays exactly like this until the screenshot is taken.
+  function stageFx(playerPos) {
+    let nearest = null;
+    let nearestD = Infinity;
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - playerPos.x, e.z - playerPos.z);
+      if (d < nearestD) { nearestD = d; nearest = e; }
+    }
+    for (const e of enemies) {
+      if (e.dead) continue;
+      e.flashT = 1;
+      const gy = Math.atan2(playerPos.x - e.x, playerPos.z - e.z);
+      e.mesh.rotation.y = gy;
+      e.flash.position.set(e.x + Math.sin(gy) * 0.45, 1.3, e.z + Math.cos(gy) * 0.45);
+      e.flash.visible = true;
+      paintHealthBar(e.bar, e.hp);
+      e.bar.sprite.position.set(e.x, 2.2, e.z);
+      e.bar.sprite.visible = true;
+      fireTracer(e.x + Math.sin(gy) * 0.45, 1.3, e.z + Math.cos(gy) * 0.45, playerPos.x, 1.4, playerPos.z);
+    }
+    if (nearest) {
+      const dx = nearest.x - playerPos.x;
+      const dz = nearest.z - playerPos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const ux = dx / d;
+      const uz = dz / d;
+      muzzleT = 1;
+      flashLight.position.set(playerPos.x + ux, 1.5, playerPos.z + uz);
+      flashLight.intensity = 30;
+      flashSprite.position.set(playerPos.x + ux * 1.2, 1.5, playerPos.z + uz * 1.2);
+      flashSprite.material.opacity = 0.95;
+      fireTracer(playerPos.x + ux, 1.5, playerPos.z + uz, nearest.x, 1.3, nearest.z);
     }
   }
 
@@ -384,6 +558,8 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     pickups,
     muzzleFlash: flashSprite,
     spawnEnemy,
+    placeEnemy,
+    stageFx,
     spawnPickup,
     pickupWeapon,
     clearEnemies,
