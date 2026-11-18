@@ -15,6 +15,8 @@ export const ACTION_RELOAD = 256;
 export const ACTION_WEAPON1 = 512;
 export const ACTION_WEAPON2 = 1024;
 export const ACTION_RESTART = 2048;
+export const ACTION_MAP = 4096;
+export const ACTION_GARAGE = 8192;
 
 const KEY_ACTIONS = {
   KeyP: ACTION_PAUSE,
@@ -24,7 +26,9 @@ const KEY_ACTIONS = {
   KeyF: ACTION_PUNCH,
   KeyH: ACTION_HORN,
   KeyL: ACTION_LIGHTS,
-  KeyM: ACTION_MUTE,
+  KeyN: ACTION_MUTE,
+  KeyM: ACTION_MAP,
+  KeyG: ACTION_GARAGE,
   KeyR: ACTION_RELOAD,
   Digit1: ACTION_WEAPON1,
   Digit2: ACTION_WEAPON2,
@@ -44,7 +48,9 @@ export function createInput(canvas) {
   let clicked = false;
 
   window.addEventListener('keydown', (event) => {
-    if (event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON')) return;
+    // Only text fields swallow keys; buttons must not — after clicking
+    // New Game the button keeps focus, and M / P / G still have to work.
+    if (event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT')) return;
     keys.add(event.code);
     const action = KEY_ACTIONS[event.code];
     if (action !== undefined && !event.repeat) actions |= action;

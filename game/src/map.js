@@ -1,0 +1,231 @@
+// The full-screen city map: district map with a route line to the
+// objective, the six story missions with payouts and states, side jobs,
+// a legend, and the player's stats. It is a DOM overlay (a canvas for
+// the map itself, DOM lists around it) opened with M or from the pause
+// menu, and it pauses the sim while it is up — the same way the pause
+// menu does. District shapes are rectangles over the 12x12 grid, so
+// the minimap in hud.js can reuse districtAt() for its labels.
+import { MISSIONS } from './missions.js';
+
+export const DISTRICTS = [
+  { name: 'BEACHFRONT', tag: 'Sun, sand and fast cars on the strip', x0: -396, x1: -360, z0: -396, z1: 400, colour: '#e0c48f' },
+  { name: 'DOWNTOWN', tag: 'Glass towers and the bank', x0: -180, x1: 180, z0: -180, z1: 60, colour: '#7d8aa8' },
+  { name: 'OLD TOWN', tag: 'Narrow streets, old money', x0: -360, x1: -180, z0: -360, z1: -60, colour: '#a89a80' },
+  { name: 'PLAZA', tag: 'The fountain at the heart of the bay', x0: -60, x1: 0, z0: -60, z1: 0, colour: '#c9b489' },
+  { name: 'HILLSIDE', tag: 'Winding roads above the bay', x0: 180, x1: 396, z0: -360, z1: -60, colour: '#7fae62' },
+  { name: 'MARINA', tag: 'Yachts, chop shops and salt air', x0: -360, x1: 120, z0: 300, z1: 400, colour: '#4f8aa8' },
+  { name: 'PORT', tag: "Vane's docks — keep your head down", x0: 120, x1: 396, z0: 240, z1: 400, colour: '#8a6f4f' },
+  { name: 'INDUSTRIAL', tag: 'Warehouses and container yards', x0: 180, x1: 396, z0: 60, z1: 240, colour: '#6e6e72' },
+];
+
+export function districtAt(x, z) {
+  for (const d of DISTRICTS) {
+    if (x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1) return d;
+  }
+  return DISTRICTS[1];
+}
+
+const LEGEND = [
+  ['◆', '#ffd21f', 'Story contact / objective'],
+  ['▲', '#ffffff', 'You'],
+  ['●', '#3a86ff', 'Police'],
+  ['■', '#39d353', 'Taxi fare / destination'],
+  ['✦', '#39d353', 'Cash drop'],
+  ['⌂', '#ffb45e', 'Safehouse — Tess’s garage'],
+  ['⚙', '#ff9d5c', 'Garage upgrades'],
+  ['✚', '#ff5a5a', 'Hospital'],
+  ['⚑', '#e5534b', 'Street race'],
+  ['↗', '#7dd87d', 'Stunt jump'],
+];
+
+const SIDE_JOBS = [
+  { name: 'Taxi fares', state: (s) => `${s.faresDone} done — hail a waving passenger` },
+  { name: 'Street races', state: () => '3 races — markers at the Marina, Port and Beachfront' },
+  { name: 'Stunt jumps', state: () => '1 ramp over the marina gap — +$200 a clear' },
+  { name: 'Cash drops', state: (s) => `${s.dropsGot}/20 found — +$50 each, +$500 for all 20` },
+];
+
+export function createMap(doc, getState) {
+  const root = doc.getElementById('map-screen');
+  const canvas = doc.getElementById('map-canvas');
+  const ctx = canvas.getContext('2d');
+  const missionList = doc.getElementById('map-missions');
+  const statsEl = doc.getElementById('map-stats');
+  const legendEl = doc.getElementById('map-legend');
+  const sideEl = doc.getElementById('map-side');
+  const titleEl = doc.getElementById('map-title');
+  let open = false;
+  let tab = 'map';
+
+  function drawMap(s) {
+    const W = canvas.width;
+    const H = canvas.height;
+    const scale = Math.min(W / 800, H / 800);
+    const ox = (W - 800 * scale) / 2;
+    const oy = (H - 800 * scale) / 2;
+    const px = (x) => ox + (x + 400) * scale;
+    const pz = (z) => oy + (z + 400) * scale;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#101820';
+    ctx.fillRect(0, 0, W, H);
+    // Sea west, marina water south.
+    ctx.fillStyle = '#1d5a74';
+    ctx.fillRect(0, 0, px(-396), H);
+    ctx.fillRect(0, pz(366), W, H - pz(366));
+    // Districts, coloured.
+    for (const d of DISTRICTS) {
+      ctx.fillStyle = d.colour;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(px(d.x0), pz(d.z0), px(d.x1) - px(d.x0), pz(d.z1) - pz(d.z0));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#0e1418';
+      ctx.font = `bold ${Math.max(11, 13 * scale)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(d.name, (px(d.x0) + px(d.x1)) / 2, (pz(d.z0) + pz(d.z1)) / 2);
+    }
+    // Streets.
+    ctx.strokeStyle = 'rgba(245,239,228,0.55)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i <= 12; i += 1) {
+      const v = -360 + i * 60;
+      ctx.beginPath(); ctx.moveTo(px(v), 0); ctx.lineTo(px(v), H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, pz(v)); ctx.lineTo(W, pz(v)); ctx.stroke();
+    }
+    // Grid coordinates along the edges.
+    ctx.fillStyle = '#cbb98f';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    for (let i = 0; i <= 12; i += 1) {
+      const v = -360 + i * 60;
+      ctx.fillText(String(v), px(v) + 2, 12);
+      ctx.fillText(String(v), 4, pz(v) - 2);
+    }
+    // Garage / safehouse.
+    ctx.fillStyle = '#ffb45e';
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillText('⌂', px(150) - 7, pz(180) + 5);
+    // Cash drops.
+    ctx.fillStyle = '#39d353';
+    for (const d of s.drops || []) {
+      if (d.taken) continue;
+      ctx.fillRect(px(d.x) - 2, pz(d.z) - 2, 4, 4);
+    }
+    // Route line from the player to the objective.
+    if (s.marker) {
+      ctx.strokeStyle = '#ffd21f';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(px(s.player.x), pz(s.player.z));
+      ctx.lineTo(px(s.marker.x), pz(s.marker.z));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ffd21f';
+      ctx.beginPath(); ctx.arc(px(s.marker.x), pz(s.marker.z), 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0e1418';
+      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      const gps = Math.round(Math.hypot(s.marker.x - s.player.x, s.marker.z - s.player.z));
+      ctx.fillText(`${gps}m`, px(s.marker.x), pz(s.marker.z) - 12);
+    }
+    // Police blips.
+    ctx.fillStyle = '#3a86ff';
+    for (const c of s.cruisers || []) {
+      ctx.beginPath(); ctx.arc(px(c.x), pz(c.z), 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // Player arrow.
+    ctx.save();
+    ctx.translate(px(s.player.x), pz(s.player.z));
+    ctx.rotate(-s.player.heading);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -10); ctx.lineTo(7, 8); ctx.lineTo(-7, 8); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px(s.player.x), pz(s.player.z), 12, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  function render() {
+    const s = getState();
+    if (!s) return;
+    const d = districtAt(s.player.x, s.player.z);
+    titleEl.textContent = `SOLMAR BAY — ${d.name} · ${d.tag}`;
+    // Mission list with payouts and states.
+    missionList.innerHTML = '';
+    MISSIONS.forEach((m, i) => {
+      const row = doc.createElement('div');
+      row.className = 'map-row';
+      const state = i < s.missionsDone ? '✓ COMPLETE' : i === s.currentMission ? '▶ IN PROGRESS' : i <= s.unlocked ? '○ AVAILABLE' : '🔒 LOCKED';
+      row.innerHTML = `<span class="map-row-name">${i + 1}. ${m.name}</span><span class="map-row-pay">$${m.reward.toLocaleString('en-US')}</span><span class="map-row-state">${state}</span>`;
+      missionList.appendChild(row);
+    });
+    // Side jobs.
+    sideEl.innerHTML = '';
+    for (const j of SIDE_JOBS) {
+      const row = doc.createElement('div');
+      row.className = 'map-row';
+      row.innerHTML = `<span class="map-row-name">${j.name}</span><span class="map-row-state">${j.state(s)}</span>`;
+      sideEl.appendChild(row);
+    }
+    // Legend.
+    legendEl.innerHTML = '';
+    for (const [mark, colour, label] of LEGEND) {
+      const row = doc.createElement('div');
+      row.className = 'map-row';
+      row.innerHTML = `<span style="color:${colour};font-weight:800;width:22px;display:inline-block">${mark}</span><span>${label}</span>`;
+      legendEl.appendChild(row);
+    }
+    // Stats panel (shown on the map tab and mirrored on the STATS tab).
+    const p = s.progression;
+    const fmt = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    const statsHtml =
+      `<div class="map-row"><span>Cash</span><b>$${Math.floor(s.cash).toLocaleString('en-US')}</b></div>` +
+      `<div class="map-row"><span>REP</span><b>${p.tier.level} · ${p.tier.name} — ${p.rep} REP</b></div>` +
+      `<div class="map-row"><span>Completion</span><b>${s.completion}%</b></div>` +
+      `<div class="map-row"><span>Time played</span><b>${fmt(s.timePlayed)}</b></div>` +
+      `<div class="map-row"><span>Cars stolen</span><b>${p.stats.carsStolen}</b></div>` +
+      `<div class="map-row"><span>Takedowns</span><b>${p.stats.takedowns}</b></div>` +
+      `<div class="map-row"><span>Escapes</span><b>${p.stats.escapes}</b></div>` +
+      `<div class="map-row"><span>Taxi fares</span><b>${s.faresDone} done · $${s.taxiEarned.toLocaleString('en-US')}</b></div>` +
+      `<div class="map-row"><span>Cash drops</span><b>${s.dropsGot}/20</b></div>` +
+      `<div class="map-row"><span>Skills</span><b>Driving ${'●'.repeat(p.skills.Driving)}${'○'.repeat(5 - p.skills.Driving)} · Shooting ${'●'.repeat(p.skills.Shooting)}${'○'.repeat(5 - p.skills.Shooting)} · Stamina ${'●'.repeat(p.skills.Stamina)}${'○'.repeat(5 - p.skills.Stamina)}</b></div>`;
+    statsEl.innerHTML = statsHtml;
+    const dup = doc.getElementById('map-stats-dup');
+    if (dup) dup.innerHTML = statsHtml;
+    drawMap(s);
+  }
+
+  function show() {
+    open = true;
+    root.classList.remove('hidden');
+    render();
+  }
+
+  function hide() {
+    open = false;
+    root.classList.add('hidden');
+  }
+
+  function setTab(next) {
+    tab = next;
+    for (const b of doc.querySelectorAll('#map-screen .map-tab')) {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    }
+    doc.getElementById('map-tab-map').classList.toggle('hidden', tab !== 'map');
+    doc.getElementById('map-tab-missions').classList.toggle('hidden', tab !== 'missions');
+    doc.getElementById('map-tab-stats').classList.toggle('hidden', tab !== 'stats');
+    if (tab === 'map') render();
+  }
+
+  for (const b of doc.querySelectorAll('#map-screen .map-tab')) {
+    b.addEventListener('click', () => setTab(b.dataset.tab));
+  }
+  doc.getElementById('btn-map-close').addEventListener('click', hide);
+
+  return {
+    get isOpen() { return open; },
+    show, hide, render, setTab,
+  };
+}
