@@ -58,6 +58,12 @@
   #speed { font-size: 34px; font-weight: 800; }
   #gear { font-size: 15px; font-weight: 700; color: #cbb98f; }
   #speed-row { white-space: nowrap; }
+  /* Small analogue dial beside the digital speed: the arc is the
+     at-a-glance read, the digits stay exact. */
+  #speed-dial { vertical-align: middle; margin-right: 5px; }
+  /* A damage number staged for a screenshot must not fade out with
+     the 1.1s float animation — pinned numbers hold at full opacity. */
+  .dmg-number.dmg-pinned { animation: none; opacity: 1; }
   #car-class { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: 1px; background: #ffd21f; color: #1a120c; border-radius: 4px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
   #fuel-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 5px; }
   #fuel-bar { width: 130px; height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
@@ -100,32 +106,36 @@
      sports car on the plaza) shows on the right of the frame. */
   #title-screen { justify-content: flex-start; padding-left: 36px; background: linear-gradient(90deg, rgba(12,8,5,0.88) 0%, rgba(12,8,5,0.66) 46%, rgba(12,8,5,0.08) 78%, rgba(12,8,5,0) 100%); }
   #title-screen .card { max-width: 600px; }
-  .card { background: rgba(20, 16, 12, 0.88); border: 1px solid rgba(255, 180, 94, 0.5); border-radius: 12px; padding: 10px 26px; max-width: 640px; max-height: 94vh; overflow-y: auto; text-align: center; }
-  .card h1 { margin: 0 0 4px; font-size: 36px; letter-spacing: 4px; color: #ffb45e; text-shadow: 0 3px 18px rgba(255, 140, 40, 0.6); }
+  .card { background: rgba(20, 16, 12, 0.88); border: 1px solid rgba(255, 180, 94, 0.5); border-radius: 12px; padding: 8px 22px; max-width: 640px; max-height: 94vh; overflow-y: auto; text-align: center; }
+  .card h1 { margin: 0 0 2px; font-size: 30px; letter-spacing: 3px; color: #ffb45e; text-shadow: 0 3px 18px rgba(255, 140, 40, 0.6); }
   .card h2 { margin: 0 0 12px; font-size: 30px; color: #ffb45e; }
   .card p { color: #cbb98f; line-height: 1.5; margin: 6px 0; }
+  /* The title tagline is kept short and small so the card fits 720px. */
+  #title-screen .card p { font-size: 13px; line-height: 1.4; margin: 4px 0; }
   /* HOW TO PLAY: a two-column key list, not a wall of text. */
-  .howto { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 22px; text-align: left; font-size: 12px; margin: 6px 0; }
-  .howto h4 { grid-column: 1 / -1; margin: 2px 0 0; font-size: 12px; letter-spacing: 2px; color: #ffd21f; text-align: center; }
+  .howto { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 18px; text-align: left; font-size: 11px; margin: 4px 0; }
+  .howto h4 { grid-column: 1 / -1; margin: 2px 0 0; font-size: 11px; letter-spacing: 2px; color: #ffd21f; text-align: center; }
   .howto b { color: #ffb45e; letter-spacing: 1px; }
-  .howto div { line-height: 1.55; color: #cbb98f; }
-  .card button { pointer-events: auto; display: block; width: 100%; margin: 6px 0; padding: 10px; font-size: 16px; font-weight: 700; color: #1a120c; background: #ffb45e; border: none; border-radius: 8px; cursor: pointer; }
+  .howto div { line-height: 1.45; color: #cbb98f; }
+  .card button { pointer-events: auto; display: block; width: 100%; margin: 5px 0; padding: 8px; font-size: 15px; font-weight: 700; color: #1a120c; background: #ffb45e; border: none; border-radius: 8px; cursor: pointer; }
   .card button:hover { background: #ffc98a; }
   .card button:disabled { background: #6b6258; color: #cbb98f; cursor: default; }
   .card button.secondary { background: #3a3a40; color: #f5efe4; }
-  #mission-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
-  #mission-list button { font-size: 13px; font-weight: 600; padding: 8px; text-align: left; margin: 0; }
+  /* Mission list, three across: six buttons in two rows, so the list,
+     New Game and Continue all fit inside a 720px frame. */
+  #mission-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin: 6px 0 2px; }
+  #mission-list button { font-size: 12px; font-weight: 600; padding: 6px 7px; text-align: left; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .screen, .card button { pointer-events: auto; }
-  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0; }
-  .pill { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: rgba(255,180,94,0.18); border: 1px solid rgba(255,180,94,0.5); color: #ffd9a0; }
+  .pills { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin: 4px 0; }
+  .pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px; background: rgba(255,180,94,0.18); border: 1px solid rgba(255,180,94,0.5); color: #ffd9a0; }
   /* Character cards with canvas portraits + one-line bios. */
-  .char-cards { display: flex; gap: 10px; justify-content: center; margin: 8px 0 2px; }
-  .char-card { flex: 1; background: rgba(255,180,94,0.08); border: 1px solid rgba(255,180,94,0.35); border-radius: 8px; padding: 6px; text-align: center; }
-  .char-card canvas { width: 48px; height: 48px; border-radius: 50%; border: 2px solid rgba(245,239,228,0.5); }
-  .char-name { font-size: 13px; font-weight: 800; color: #f5efe4; margin-top: 4px; }
+  .char-cards { display: flex; gap: 8px; justify-content: center; margin: 6px 0 2px; }
+  .char-card { flex: 1; background: rgba(255,180,94,0.08); border: 1px solid rgba(255,180,94,0.35); border-radius: 8px; padding: 5px; text-align: center; }
+  .char-card canvas { width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(245,239,228,0.5); }
+  .char-name { font-size: 12px; font-weight: 800; color: #f5efe4; margin-top: 3px; }
   .char-role { font-size: 11px; font-weight: 700; color: #ffb45e; letter-spacing: 1px; }
-  .char-bio { font-size: 11px; color: #cbb98f; line-height: 1.35; margin-top: 3px; }
-  #save-summary { font-size: 14px; font-weight: 700; color: #7dd87d; margin: 6px 0; }
+  .char-bio { font-size: 11px; color: #cbb98f; line-height: 1.35; margin-top: 2px; }
+  #save-summary { font-size: 13px; font-weight: 700; color: #7dd87d; margin: 4px 0; }
   #save-summary.muted { color: #8a8078; }
   /* Mission briefing / chapter card (over the title screen). */
   #briefing-screen { z-index: 30; }
@@ -210,7 +220,7 @@
   <div id="objective" class="panel">Free roam — explore Solmar Bay</div>
   <div id="timer" class="hidden"></div>
   <div id="fare" class="hidden"></div>
-  <div id="weapon-box"><div><span id="car-name"></span><span id="car-class" class="hidden"></span></div><div id="speed-row"><span id="speed"></span> <span id="gear"></span></div><div id="fuel-row" class="hidden"><div id="fuel-bar"><div id="fuel-fill"></div></div><span id="fuel-text"></span></div><div id="plate-line" class="hidden"></div><div id="weapon">Fists</div><div id="weapon-slots"></div></div>
+  <div id="weapon-box"><div><span id="car-name"></span><span id="car-class" class="hidden"></span></div><div id="speed-row"><canvas id="speed-dial" width="52" height="52"></canvas><span id="speed"></span> <span id="gear"></span></div><div id="fuel-row" class="hidden"><div id="fuel-bar"><div id="fuel-fill"></div></div><span id="fuel-text"></span></div><div id="plate-line" class="hidden"></div><div id="weapon">Fists</div><div id="weapon-slots"></div></div>
   <div id="crosshair"></div>
   <div id="dialogue" class="panel hidden"><canvas id="portrait" width="48" height="48"></canvas><div><div id="dialogue-who"></div><div id="dialogue-line"></div></div></div>
   <div id="popups"></div>
@@ -223,27 +233,27 @@
 <div id="title-screen" class="screen">
   <div class="card">
     <h1>SOLMAR BAY</h1>
-    <p>Jace Moreno is out of prison and back in his home city. Tess Alvarez runs jobs from her garage. Councillor Dario Vane owns the port — and the police captain. Take the city back, one job at a time.</p>
+    <p>Jace Moreno is out of prison and back in Solmar Bay. Tess Alvarez runs jobs from her garage — and Councillor Dario Vane owns the port, and the police. Take the city back, one job at a time.</p>
     <div class="pills">
       <span class="pill">Steal &amp; drive</span><span class="pill">Wanted levels &amp; police</span><span class="pill">6 story missions</span><span class="pill">Combat</span><span class="pill">Living city</span><span class="pill">Save &amp; continue</span>
     </div>
     <div class="char-cards">
-      <div class="char-card"><canvas id="char-jace" width="56" height="56"></canvas><div class="char-name">Jace Moreno</div><div class="char-role">WHEELMAN</div><div class="char-bio">Just out of prison. The best driver in Solmar Bay.</div></div>
-      <div class="char-card"><canvas id="char-tess" width="56" height="56"></canvas><div class="char-name">Tess Alvarez</div><div class="char-role">FIXER</div><div class="char-bio">Runs jobs from her garage at the marina end.</div></div>
-      <div class="char-card"><canvas id="char-dario" width="56" height="56"></canvas><div class="char-name">Dario Vane</div><div class="char-role">COUNCILLOR</div><div class="char-bio">Owns the port — and the police captain.</div></div>
-      <div class="char-card"><canvas id="char-marisol" width="56" height="56"></canvas><div class="char-name">Marisol Vega</div><div class="char-role">RACER</div><div class="char-bio">Street-race champion. Never lost a duel.</div></div>
+      <div class="char-card"><canvas id="char-jace" width="56" height="56"></canvas><div class="char-name">Jace Moreno</div><div class="char-role">WHEELMAN</div><div class="char-bio">Ex-con wheelman. Best driver in the Bay.</div></div>
+      <div class="char-card"><canvas id="char-tess" width="56" height="56"></canvas><div class="char-name">Tess Alvarez</div><div class="char-role">FIXER</div><div class="char-bio">Fixer. Runs jobs from her garage.</div></div>
+      <div class="char-card"><canvas id="char-dario" width="56" height="56"></canvas><div class="char-name">Dario Vane</div><div class="char-role">COUNCILLOR</div><div class="char-bio">Owns the port — and the police.</div></div>
+      <div class="char-card"><canvas id="char-marisol" width="56" height="56"></canvas><div class="char-name">Marisol Vega</div><div class="char-role">RACER</div><div class="char-bio">Street-race champion. Never lost.</div></div>
     </div>
     <div id="save-summary"></div>
+    <div id="mission-list"></div>
     <div class="howto">
       <h4>HOW TO PLAY</h4>
       <div><b>ON FOOT</b><br>WASD — move · Shift — run<br>Space — jump · F — punch<br>Click — shoot · 1–5 — weapons · R — reload</div>
       <div><b>DRIVING</b><br>WASD — drive · Space — handbrake<br>E — enter / exit car · H — horn<br>L — headlights · C — look back · Shift — nitro</div>
       <div><b>CITY</b><br>M — city map · G — garage (near Tess's)<br>P / Esc — pause · N — mute · T — restart<br>Taxi — stop by a waving passenger</div>
-      <div><b>JOBS</b><br>6 story missions<br>Taxi fares · Package deliveries<br>Street races · Stunt jumps<br>Cash drops — 20 hidden in the city</div>
+      <div><b>JOBS</b><br>6 story missions<br>Taxi fares · Package deliveries<br>Street races · Stunt jumps · 20 cash drops</div>
     </div>
     <button id="btn-new">New Game</button>
     <button id="btn-continue" class="secondary">Continue</button>
-    <div id="mission-list"></div>
   </div>
 </div>
 

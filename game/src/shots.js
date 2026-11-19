@@ -24,10 +24,15 @@ function autopilotDrive(game, tx, tz, cruise, seconds) {
 export function stageShot(name, game) {
   game.resetWorld();
   if (name === 'title') {
+    // The title shot keeps the staged close-up from stageTitleScene
+    // (Jace + the red sports car on the plaza, right of the panel) —
+    // the old wide-vista camera override is dropped, it hid the pair
+    // behind the panel. The mid-progress save is seeded by the shot
+    // renderer (tools/shots-v2.mjs), so CONTINUE reads Mission 4/6 ·
+    // $12,400 · 37%, not "NO SAVE YET".
     game.setSky(18.7);
     for (let i = 0; i < 300; i += 1) game.stepSim(STEP, null, true);
     game.setScreen(SCREEN_TITLE);
-    game.stageCamera({ x: -280, y: 80, z: -120 }, { x: 80, y: 10, z: 80 });
     return;
   }
   if (name === 'map') {
@@ -43,6 +48,14 @@ export function stageShot(name, game) {
     game.police.spawnCruiser(48, 30);
     game.police.spawnCruiser(12, 48);
     for (let i = 0; i < 120; i += 1) game.stepSim(STEP, null, true);
+    // Mid-progress save state for the map read-outs: four story jobs
+    // done (54% complete), so the save-slot line and the mission
+    // states read as a played save, not a fresh 0%. Set after the
+    // sim steps, so nothing in the drive can move it — the missions
+    // counter is the authority (the map list reads it) and the
+    // progression counter feeds the completion %.
+    game.missions.setStats(4, 0);
+    game.progression.stats.missionsDone = 4;
     game.openMap();
     return;
   }
@@ -87,6 +100,20 @@ export function stageShot(name, game) {
     // the fountain and the downtown towers behind them, sky above —
     // the plaza floor fills the bottom instead of a black void.
     game.stageCamera({ x: -23, y: 3.2, z: -4 }, { x: -30.5, y: 1.3, z: -30 });
+    // One visible damage number over the nearest rival (the same
+    // showDamage live play uses, projected through the staged camera),
+    // so the frame carries the top-5 "-NN HEAVY HIT" feedback. It gets
+    // a 5-minute lifetime and a pinned style: the default 1150 ms float
+    // would expire before the screenshot (slow SwiftShader boot), the
+    // float animation would fade it out even if the node survived, and
+    // a 30 s lifetime still lost to the font-load stall + screenshot
+    // retry (proven firsthand: the node was present at staging and
+    // gone ~31 s later when the retry landed).
+    const foe = crew.find((e) => !e.dead);
+    if (foe) {
+      const p = game.project(foe.x, 1.3, foe.z);
+      if (p) game.showDamage(p.x, p.y, 68, 'HEAVY HIT', 300000);
+    }
     return;
   }
   if (name === 'boulevard') {

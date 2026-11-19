@@ -118,16 +118,34 @@ function stageTitleScene() {
   // Park the player's car first, if they quit to the title mid-drive,
   // so it stays enterable instead of orphaned in the world.
   if (player.inCar) exitCar();
-  // Jace faces the camera (south-east); the lens sits south-east of
-  // the pair and aims north-west past them, so both land right of the
-  // title panel instead of behind it.
-  placePlayerOnFoot(-24, -26, 0.7);
-  titleCar = newCar('sports', -17, -26, Math.PI / 2, 0xc22730);
+  // Jace + the red sports car stand on the plaza's east rim, close to
+  // the lens and right of the title panel: the lens sits east of the
+  // pair on the plaza disc itself — no traffic drives there — and looks
+  // west past the fountain, so Jace lands large mid-right with the car
+  // beside him, the fountain and the downtown towers behind them, and
+  // the sun disc over the sea at the frame's left. (Earlier stagings
+  // failed firsthand: from the south-east a palm trunk hid Jace, a near
+  // tower face filled the frame, then a traffic sedan drove in front of
+  // the lens — the lens was on the road — and a market stall counter
+  // blocked the lower frame. The lens is now inside the plaza block,
+  // and the stall is out of frame. Screen positions were checked by
+  // projecting the pair through the 62° camera: Jace ≈ x 790, ~95 px
+  // tall; car x 940–1240.)
+  placePlayerOnFoot(-21, -28, Math.PI / 2);
+  // In shot mode the frame loop only draws (no stepSim runs after
+  // staging), so sync the player mesh here: placePlayerOnFoot moves
+  // the logical player only, and the mesh would otherwise stay at
+  // the spawn point, leaving Jace out of frame. Harmless in normal
+  // play too — the per-frame step keeps syncing it afterwards.
+  playerMesh.position.set(player.x, 0, player.z);
+  playerMesh.rotation.y = player.heading;
+  playerMesh.visible = true;
+  titleCar = newCar('sports', -20, -32, 0.9, 0xc22730);
   titleCar.parked = true;
   dynamicGroup.add(titleCar.mesh);
   traffic.parked.push(titleCar);
   renderer.setSky(18.7);
-  stageCamera({ x: -12, y: 2.6, z: -12 }, { x: -30, y: 1.2, z: -26 });
+  stageCamera({ x: -10, y: 2.6, z: -28 }, { x: -42, y: 1.2, z: -20 });
 }
 
 // The title screen's character cards: canvas portraits (the same
@@ -212,7 +230,7 @@ function buildDynamic() {
   traffic = createTraffic(rng, city, dynamicGroup);
   peds = createPedestrians(rng, dynamicGroup);
   collectibles = createCollectibles(rng, dynamicGroup, city);
-  combat = createCombat(dynamicGroup, onPlayerHit, onKill, city.colliders, onHotspotClear, onWeaponPickup);
+  combat = createCombat(dynamicGroup, onPlayerHit, onKill, city.colliders, onHotspotClear, onWeaponPickup, onCombatHit);
   police = createPolice(dynamicGroup);
   taxi = createTaxi(dynamicGroup);
   heli = createHelicopter(dynamicGroup);
@@ -423,6 +441,23 @@ function onKill() {
   slowmoT = 0.35; // a brief slow-down on a kill
 }
 
+// Damage numbers: every shot that lands on a rival pops a floating
+// "-NN" over them (the top-5 pattern: r2 "-45", r3 "-55 HEAVY HIT" /
+// "-34 GUNMAN DOWN"), projected from the enemy's chest to screen
+// pixels. Callouts: a heavy hit (40+ damage), a takedown, and the
+// moment the last rival of a mission crew goes down.
+function onCombatHit(e, damage) {
+  const p = renderer.project(e.x, 1.3, e.z);
+  if (!p) return;
+  const crew = combat.enemies.filter((en) => en.tag === 'mission');
+  const down = crew.filter((en) => en.dead).length;
+  let label = null;
+  if (e.dead && crew.length > 0 && down >= crew.length) label = `RIVALS DOWN ${down}/${crew.length}`;
+  else if (e.dead) label = 'GUNMAN DOWN';
+  else if (damage >= 40) label = 'HEAVY HIT';
+  hud.showDamage(p.x, p.y, damage, label);
+}
+
 function onHotspotClear() {
   player.cash += 100;
   hud.toast('Rival hotspot cleared!  +$100');
@@ -577,10 +612,15 @@ function stageCamera(pos, look) {
 }
 
 const game = {
-  player, missions, police: null, combat: null, traffic: null, peds: null, collectibles: null,
+  player, missions, progression, police: null, combat: null, traffic: null, peds: null, collectibles: null,
   resetWorld, stepSim, setScreen, placePlayerOnFoot, placePlayerInCar, stageCamera,
   openMap, closeMap,
   setSky(hour) { renderer.setSky(hour); },
+  // 3D → 2D projection, for shot staging (damage numbers over rivals).
+  project(x, y, z) { return renderer.project(x, y, z); },
+  // Damage-number passthrough; lifetimeMs is forwarded so a staged
+  // screenshot can keep a number on screen (see hud.showDamage).
+  showDamage(x, y, amount, label, lifetimeMs) { hud.showDamage(x, y, amount, label, lifetimeMs); },
   pursueInput(car, tx, tz, cruise) { return pursueSteer(car, tx, tz, cruise); },
 };
 Object.defineProperties(game, {
@@ -1071,7 +1111,10 @@ function buildMissionList() {
   list.innerHTML = '';
   MISSIONS.forEach((m, i) => {
     const btn = document.createElement('button');
-    btn.textContent = `${i + 1}. ${m.name} — $${m.reward}${i > missions.unlocked ? ' (locked)' : ''}`;
+    btn.textContent = `${i + 1}. ${m.name} — $${m.reward}`;
+    // Locked missions read as locked through the disabled (greyed)
+    // button alone — a "(locked)" suffix made the three-across
+    // buttons truncate with an ellipsis at 720p.
     btn.disabled = i > missions.unlocked;
     btn.addEventListener('click', () => {
       audio.unlock();

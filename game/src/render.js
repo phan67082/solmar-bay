@@ -161,5 +161,21 @@ export function createRenderer(canvas) {
     renderer.render(scene, camera);
   }
 
-  return { renderer, scene, camera, cam, draw, updateCamera, setSky };
+  // Project a world position to CSS pixels in the frame (for floating
+  // damage numbers over rivals): null when the point sits behind the
+  // camera. The camera matrix is refreshed first, so the result is
+  // exact even between frames — a staged screenshot projects through
+  // the staged camera it just set.
+  const _projectV = new THREE.Vector3();
+  function project(x, y, z) {
+    camera.updateMatrixWorld();
+    _projectV.set(x, y, z).project(camera);
+    if (_projectV.z > 1) return null;
+    return {
+      x: Math.round((_projectV.x * 0.5 + 0.5) * window.innerWidth),
+      y: Math.round((-_projectV.y * 0.5 + 0.5) * window.innerHeight),
+    };
+  }
+
+  return { renderer, scene, camera, cam, draw, updateCamera, setSky, project };
 }

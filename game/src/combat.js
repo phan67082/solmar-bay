@@ -33,7 +33,7 @@ function makeEnemyMesh() {
   return g;
 }
 
-export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotspotClear = null, onWeaponPickup = null) {
+export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotspotClear = null, onWeaponPickup = null, onHit = null) {
   let weapon = 'fists';
   // One magazine + reserve per gun; fists need none. The player starts
   // with fists and the pistol; the SMG, shotgun and rifle are found as
@@ -299,6 +299,8 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
           e.mesh.position.set(e.x, 0, e.z);
           spawnSpark(e.x, 1.2, e.z);
           if (e.hp <= 0) kill(e);
+          // Fists land one hit at a time, so the hook fires right here.
+          if (onHit) onHit(e, spec.damage);
           return e;
         }
       }
@@ -319,6 +321,9 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     let hitAny = null;
     let nearestHit = null;
     let nearestHitD = spec.range;
+    // Damage tallied per enemy for this trigger pull: a shotgun's five
+    // pellets landing on one rival add up to a single number.
+    const perEnemy = new Map();
     for (let p = 0; p < pellets; p += 1) {
       const spread = spec.spread || 0;
       const ang = (Math.random() - 0.5) * 2 * spread;
@@ -347,6 +352,7 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
       best.flashT = 0.12;
       spawnSpark(best.x, 1.3, best.z);
       if (best.hp <= 0) kill(best);
+      perEnemy.set(best, (perEnemy.get(best) || 0) + spec.damage);
       hitAny = best;
       if (bestD < nearestHitD) { nearestHitD = bestD; nearestHit = best; }
     }
@@ -354,6 +360,9 @@ export function createCombat(scene, onPlayerHit, onKill, colliders = [], onHotsp
     // hit — or at full range on a miss, so a miss still reads as fire.
     if (nearestHit) fireTracer(ox + dx, oy, oz + dz, nearestHit.x, 1.3, nearestHit.z);
     else fireTracer(ox + dx, oy, oz + dz, ox + dx * spec.range, oy, oz + dz * spec.range);
+    // Report every landed hit once, after kill() settled e.dead, so a
+    // takedown callout can trust the flag.
+    if (onHit) for (const [foe, dmg] of perEnemy) onHit(foe, dmg);
     return hitAny;
   }
 

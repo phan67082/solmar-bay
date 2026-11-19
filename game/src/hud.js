@@ -139,6 +139,10 @@ export function createHud(doc) {
   const fuelText = el('fuel-text');
   const plateLine = el('plate-line');
   const carClassEl = el('car-class');
+  // The analogue dial canvas in the car panel; absent on screens that
+  // never show the car panel, so the context may be null.
+  const dialEl = el('speed-dial');
+  const dialCtx = dialEl ? dialEl.getContext('2d') : null;
   const minimap = el('minimap');
   const mctx = minimap.getContext('2d');
   let toastT = 0;
@@ -159,18 +163,22 @@ export function createHud(doc) {
   }
 
   // Floating damage numbers (the top-5 pattern: r2 "-45", r3 "-55
-  // HEAVY HIT" / "-34 GUNMAN DOWN"). Combat calls this whenever a shot
-  // lands — Builder B wires it from combat.js:
-  //   hud.showDamage(screenX, screenY, amount, label)
+  // HEAVY HIT" / "-34 GUNMAN DOWN"). main.js feeds this from combat's
+  // onHit hook, after projecting the enemy's chest to screen pixels:
+  //   hud.showDamage(screenX, screenY, amount, label, lifetimeMs)
   // screenX/screenY are CSS pixels inside the HUD frame (1280x720);
   // amount is the damage number, label an optional callout such as
   // "HEAVY HIT", "GUNMAN DOWN" or "RIVALS DOWN 3/6". Each number floats
   // up and fades in about a second; the queue caps at 12 so a volley
-  // cannot flood the screen.
-  function showDamage(x, y, amount, label) {
+  // cannot flood the screen. lifetimeMs defaults to that float (1150);
+  // a staged screenshot may pass a long one — long-lived numbers are
+  // pinned (no float animation, full opacity) so they survive a slow
+  // renderer boot and are still on screen when the shot is taken.
+  function showDamage(x, y, amount, label, lifetimeMs = 1150) {
     if (!damageLayer) return;
     const node = doc.createElement('div');
     node.className = 'dmg-number';
+    if (lifetimeMs > 2000) node.classList.add('dmg-pinned');
     node.style.left = `${Math.max(8, Math.min(window.innerWidth - 100, x))}px`;
     node.style.top = `${Math.max(8, y)}px`;
     const big = doc.createElement('span');
@@ -184,8 +192,55 @@ export function createHud(doc) {
       node.appendChild(tag);
     }
     damageLayer.appendChild(node);
-    window.setTimeout(() => node.remove(), 1150);
+    window.setTimeout(() => node.remove(), lifetimeMs);
     while (damageLayer.children.length > 12) damageLayer.firstChild.remove();
+  }
+
+  // Analogue speedometer (r3's dial, beside the digital readout): a
+  // three-quarter sweep, 0–200 km/h, amber arc with a needle, turning
+  // red past 160. The digital speed stays the exact read; the dial is
+  // the glanceable one.
+  function drawSpeedDial(kmh) {
+    if (!dialCtx) return;
+    const S = 52;
+    const C = S / 2;
+    const R = 23;
+    const arcStart = Math.PI * 0.75;
+    const arcSweep = Math.PI * 1.5;
+    const topSpeed = 200;
+    const frac = Math.max(0, Math.min(1, kmh / topSpeed));
+    const angleFor = (f) => arcStart + arcSweep * f;
+    dialCtx.clearRect(0, 0, S, S);
+    dialCtx.beginPath();
+    dialCtx.arc(C, C, R, 0, Math.PI * 2);
+    dialCtx.fillStyle = 'rgba(12,8,5,0.55)';
+    dialCtx.fill();
+    dialCtx.strokeStyle = 'rgba(245,239,228,0.5)';
+    dialCtx.lineWidth = 1.5;
+    dialCtx.stroke();
+    dialCtx.beginPath();
+    dialCtx.arc(C, C, R - 4, arcStart, angleFor(1));
+    dialCtx.strokeStyle = 'rgba(245,239,228,0.25)';
+    dialCtx.lineWidth = 4;
+    dialCtx.stroke();
+    if (frac > 0) {
+      dialCtx.beginPath();
+      dialCtx.arc(C, C, R - 4, arcStart, angleFor(frac));
+      dialCtx.strokeStyle = kmh > 160 ? '#e5534b' : '#ffb45e';
+      dialCtx.lineWidth = 4;
+      dialCtx.stroke();
+    }
+    const needle = angleFor(frac);
+    dialCtx.beginPath();
+    dialCtx.moveTo(C, C);
+    dialCtx.lineTo(C + Math.cos(needle) * (R - 7), C + Math.sin(needle) * (R - 7));
+    dialCtx.strokeStyle = '#ffd21f';
+    dialCtx.lineWidth = 2;
+    dialCtx.stroke();
+    dialCtx.beginPath();
+    dialCtx.arc(C, C, 2.5, 0, Math.PI * 2);
+    dialCtx.fillStyle = '#ffd21f';
+    dialCtx.fill();
   }
 
   function drawMinimap(state) {
@@ -298,10 +353,13 @@ export function createHud(doc) {
     // wrapping weapon slots in index.html) so the gear and the speed
     // can no longer run off the right edge of the frame.
     const carType = state.carType || '';
+    const kmh = Math.round(Math.abs(state.speed) * 3.6);
     if (state.carName) {
       carEl.textContent = state.carName === 'HELICOPTER' ? 'HELICOPTER — AIRBORNE' : `${state.carName} — CONDITION ${Math.max(0, Math.round(state.carCondition ?? 100))}%`;
       gearEl.textContent = state.gear || '';
-      speedEl.textContent = `${Math.round(Math.abs(state.speed) * 3.6)} km/h`;
+      speedEl.textContent = `${kmh} km/h`;
+      if (dialEl) dialEl.style.display = '';
+      drawSpeedDial(kmh);
       carClassEl.textContent = CAR_CLASS[carType] || '';
       carClassEl.classList.toggle('hidden', !CAR_CLASS[carType]);
       plateLine.textContent = `${(state.carName || '').toUpperCase()} · PLATE ${PLATES[carType] || 'SOLM 000'}`;
@@ -314,7 +372,9 @@ export function createHud(doc) {
     } else {
       carEl.textContent = state.inCar ? '' : 'ON FOOT';
       gearEl.textContent = '';
-      speedEl.textContent = state.inCar ? `${Math.round(Math.abs(state.speed) * 3.6)} km/h` : '';
+      speedEl.textContent = state.inCar ? `${kmh} km/h` : '';
+      if (dialEl) dialEl.style.display = state.inCar ? '' : 'none';
+      if (state.inCar) drawSpeedDial(kmh);
       carClassEl.classList.add('hidden');
       plateLine.classList.add('hidden');
       fuelRow.classList.add('hidden');
