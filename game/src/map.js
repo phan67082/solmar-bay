@@ -6,6 +6,16 @@
 // menu does. District shapes are rectangles over the 12x12 grid, so
 // the minimap in hud.js can reuse districtAt() for its labels.
 import { MISSIONS } from './missions.js';
+import { SKILL_NAMES } from './progression.js';
+
+// Shift a #rrggbb colour by n per channel, clamped — the per-block
+// shade variation that keeps the map from reading as flat colour.
+function shade(hex, n) {
+  const r = Math.max(0, Math.min(255, parseInt(hex.slice(1, 3), 16) + n));
+  const g = Math.max(0, Math.min(255, parseInt(hex.slice(3, 5), 16) + n));
+  const b = Math.max(0, Math.min(255, parseInt(hex.slice(5, 7), 16) + n));
+  return `rgb(${r},${g},${b})`;
+}
 
 export const DISTRICTS = [
   { name: 'BEACHFRONT', tag: 'Sun, sand and fast cars on the strip', x0: -396, x1: -360, z0: -396, z1: 400, colour: '#e0c48f' },
@@ -95,6 +105,29 @@ export function createMap(doc, getState) {
       ctx.strokeText(d.name, labelCX, labelCY);
       ctx.fillText(d.name, labelCX, labelCY);
     }
+    // City blocks: every 60 m block gets its own shade from a small
+    // seeded hash off its grid indices, so the map reads as built-up
+    // blocks instead of flat district colour.
+    for (let bx = 0; bx < 12; bx += 1) {
+      for (let bz = 0; bz < 12; bz += 1) {
+        const cx = -330 + bx * 60;
+        const cz = -330 + bz * 60;
+        const d = districtAt(cx, cz);
+        const h = ((bx * 31 + bz * 17) % 5) - 2; // -2..2
+        ctx.fillStyle = shade(d.colour, h * 7);
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(px(cx - 27), pz(cz - 27), 54 * scale, 54 * scale);
+      }
+    }
+    ctx.globalAlpha = 1;
+    // Minor streets halfway between the main roads, thin and faint.
+    ctx.strokeStyle = 'rgba(245,239,228,0.28)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 12; i += 1) {
+      const v = -330 + i * 60;
+      ctx.beginPath(); ctx.moveTo(px(v), 0); ctx.lineTo(px(v), H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, pz(v)); ctx.lineTo(W, pz(v)); ctx.stroke();
+    }
     // Streets.
     ctx.strokeStyle = 'rgba(245,239,228,0.55)';
     ctx.lineWidth = 1.5;
@@ -103,6 +136,29 @@ export function createMap(doc, getState) {
       ctx.beginPath(); ctx.moveTo(px(v), 0); ctx.lineTo(px(v), H); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, pz(v)); ctx.lineTo(W, pz(v)); ctx.stroke();
     }
+    // Street-name labels along the main roads, dark-haloed so they read
+    // on light and dark ground alike.
+    ctx.font = `bold ${Math.max(10, 11 * scale)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const roadLabel = (text, x, y, vertical) => {
+      ctx.save();
+      ctx.translate(x, y);
+      if (vertical) ctx.rotate(-Math.PI / 2);
+      ctx.strokeStyle = 'rgba(14,20,24,0.9)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(text, 0, 0);
+      ctx.fillStyle = 'rgba(245,239,228,0.9)';
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    };
+    roadLabel('BOULEVARD', px(-360) + 10, pz(60), true);
+    roadLabel('PALM AVE', px(0) + 10, pz(-180), true);
+    roadLabel('HILL RD', px(300) + 10, pz(120), true);
+    roadLabel('BANK ST', px(60), pz(-120) - 9, false);
+    roadLabel('MARINA DR', px(-60), pz(330) - 9, false);
+    roadLabel('PORT RD', px(240), pz(270) - 9, false);
+    ctx.textBaseline = 'alphabetic';
     // Grid coordinates along the edges.
     ctx.fillStyle = '#cbb98f';
     ctx.font = '11px system-ui, sans-serif';
@@ -172,20 +228,41 @@ export function createMap(doc, getState) {
     ctx.beginPath(); ctx.arc(px(s.player.x), pz(s.player.z), 12, 0, Math.PI * 2); ctx.stroke();
   }
 
-  function render() {
-    const s = getState();
-    if (!s) return;
-    const d = districtAt(s.player.x, s.player.z);
-    titleEl.textContent = `SOLMAR BAY — ${d.name} · ${d.tag}`;
-    // Mission list with payouts and states.
-    missionList.innerHTML = '';
+  // One mission-list builder for both tabs: the MISSIONS tab has the
+  // full list, and the MAP tab carries the same six rows in its left
+  // column, so the map never hides what is left to do.
+  function fillMissionList(listEl, s) {
+    listEl.innerHTML = '';
     MISSIONS.forEach((m, i) => {
       const row = doc.createElement('div');
       row.className = 'map-row';
       const state = i < s.missionsDone ? '✓ COMPLETE' : i === s.currentMission ? '▶ IN PROGRESS' : i <= s.unlocked ? '○ AVAILABLE' : '🔒 LOCKED';
       row.innerHTML = `<span class="map-row-name">${i + 1}. ${m.name}</span><span class="map-row-pay">$${m.reward.toLocaleString('en-US')}</span><span class="map-row-state">${state}</span>`;
-      missionList.appendChild(row);
+      listEl.appendChild(row);
     });
+  }
+
+  function render() {
+    const s = getState();
+    if (!s) return;
+    const d = districtAt(s.player.x, s.player.z);
+    titleEl.textContent = `SOLMAR BAY — ${d.name} · ${d.tag}`;
+    // Mission list with payouts and states, on the MISSIONS tab and
+    // on the MAP tab's left column.
+    fillMissionList(missionList, s);
+    const mapMissionsEl = doc.getElementById('map-missions-map');
+    if (mapMissionsEl) fillMissionList(mapMissionsEl, s);
+    // Save-slot line with the live completion percentage.
+    const saveSlotEl = doc.getElementById('map-save-slot');
+    if (saveSlotEl) saveSlotEl.textContent = `SAVE SLOT 1 — ${s.completion}% COMPLETE`;
+    // Skills pips panel for the STATS tab, straight from progression.
+    const skillsEl = doc.getElementById('map-skills');
+    if (skillsEl) {
+      const p = s.progression;
+      const pips = (n) => '●'.repeat(n) + '○'.repeat(5 - n);
+      skillsEl.innerHTML = SKILL_NAMES.map((name) =>
+        `<div class="map-row"><span>${name.toUpperCase()}</span><b>${pips(p.skills[name])} · ${p.practice[name] ?? 0} XP</b></div>`).join('');
+    }
     // Side jobs.
     sideEl.innerHTML = '';
     for (const j of SIDE_JOBS) {
@@ -209,6 +286,7 @@ export function createMap(doc, getState) {
       `<div class="map-row"><span>Cash</span><b>$${Math.floor(s.cash).toLocaleString('en-US')}</b></div>` +
       `<div class="map-row"><span>REP</span><b>${p.tier.level} · ${p.tier.name} — ${p.rep} REP</b></div>` +
       `<div class="map-row"><span>Completion</span><b>${s.completion}%</b></div>` +
+      `<div class="map-row"><span>Save slot</span><b>SAVE SLOT 1 — ${s.completion}% COMPLETE</b></div>` +
       `<div class="map-row"><span>Time played</span><b>${fmt(s.timePlayed)}</b></div>` +
       `<div class="map-row"><span>Cars stolen</span><b>${p.stats.carsStolen}</b></div>` +
       `<div class="map-row"><span>Takedowns</span><b>${p.stats.takedowns}</b></div>` +

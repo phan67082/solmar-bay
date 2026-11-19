@@ -9,6 +9,37 @@
 import { CASH_DROP_COUNT } from './config.js';
 import { DISTRICTS, districtAt } from './map.js';
 
+export const WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+// The in-game clock: 10 seconds of play is one game minute, starting
+// at 18:42 on DAY 1 (a Monday). Returns the day number, the weekday
+// name and the HH:MM string — the HUD clock and the title screen's
+// save summary share this, so they can never disagree.
+export function gameClock(time) {
+  const mins = 18 * 60 + 42 + Math.floor((time || 0) / 10);
+  const day = Math.floor(mins / 1440) + 1;
+  return {
+    day,
+    weekday: WEEKDAYS[(day - 1) % 7],
+    hhmm: `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`,
+  };
+}
+
+// Car class badges (r4's "S SPORTS") and licence plates (r5's
+// "PLATE VELM 247"), keyed by the vehicle type main.js passes as
+// state.carType. Plates are fixed per type, so the same car always
+// wears the same plate.
+export const CAR_CLASS = {
+  sports: 'S · SPORTS', motorcycle: 'S · BIKE', sedan: 'A · SEDAN',
+  taxi: 'B · TAXI', hatchback: 'B · HATCHBACK', pickup: 'C · PICKUP',
+  van: 'C · VAN', police: 'A · POLICE', helicopter: 'S · AIR',
+};
+export const PLATES = {
+  sports: 'SOLM 918', motorcycle: 'SOLM 600', sedan: 'SOLM 247',
+  taxi: 'SOLM 555', hatchback: 'SOLM 103', pickup: 'SOLM 762',
+  van: 'SOLM 431', police: 'SBPD 07', helicopter: 'AIR-1',
+};
+
 const CALLSIGNS = ['VIPER-1', 'GULL-2', 'REEF-7', 'HARBOUR-3', 'AIR-1', 'TIDE-4', 'CORAL-9', 'PIER-5'];
 const UNIT_STATES = ['RAMMING', 'PURSUIT', 'ROADBLOCK', 'EN ROUTE', 'SEARCHLIGHT'];
 
@@ -46,7 +77,7 @@ const DIALOGUE = {
 
 const WEAPON_SLOTS = ['Fists', 'Pistol', 'SMG', 'Shotgun', 'Rifle'];
 
-function drawPortrait(canvas, colour, initial) {
+export function drawPortrait(canvas, colour, initial) {
   const c = canvas.getContext('2d');
   const S = canvas.width;
   c.clearRect(0, 0, S, S);
@@ -99,6 +130,15 @@ export function createHud(doc) {
   const dialogueLine = el('dialogue-line');
   const portrait = el('portrait');
   const popupsEl = el('popups');
+  const damageLayer = el('damage-layer');
+  const combatBanner = el('combat-banner');
+  const rivalsLine = el('rivals-line');
+  const partnerLine = el('partner-line');
+  const fuelRow = el('fuel-row');
+  const fuelFill = el('fuel-fill');
+  const fuelText = el('fuel-text');
+  const plateLine = el('plate-line');
+  const carClassEl = el('car-class');
   const minimap = el('minimap');
   const mctx = minimap.getContext('2d');
   let toastT = 0;
@@ -116,6 +156,36 @@ export function createHud(doc) {
     popupsEl.appendChild(node);
     window.setTimeout(() => node.remove(), 2600);
     while (popupsEl.children.length > 4) popupsEl.firstChild.remove();
+  }
+
+  // Floating damage numbers (the top-5 pattern: r2 "-45", r3 "-55
+  // HEAVY HIT" / "-34 GUNMAN DOWN"). Combat calls this whenever a shot
+  // lands — Builder B wires it from combat.js:
+  //   hud.showDamage(screenX, screenY, amount, label)
+  // screenX/screenY are CSS pixels inside the HUD frame (1280x720);
+  // amount is the damage number, label an optional callout such as
+  // "HEAVY HIT", "GUNMAN DOWN" or "RIVALS DOWN 3/6". Each number floats
+  // up and fades in about a second; the queue caps at 12 so a volley
+  // cannot flood the screen.
+  function showDamage(x, y, amount, label) {
+    if (!damageLayer) return;
+    const node = doc.createElement('div');
+    node.className = 'dmg-number';
+    node.style.left = `${Math.max(8, Math.min(window.innerWidth - 100, x))}px`;
+    node.style.top = `${Math.max(8, y)}px`;
+    const big = doc.createElement('span');
+    big.className = 'dmg-amount';
+    big.textContent = `-${Math.round(amount)}`;
+    node.appendChild(big);
+    if (label) {
+      const tag = doc.createElement('span');
+      tag.className = 'dmg-label';
+      tag.textContent = label;
+      node.appendChild(tag);
+    }
+    damageLayer.appendChild(node);
+    window.setTimeout(() => node.remove(), 1150);
+    while (damageLayer.children.length > 12) damageLayer.firstChild.remove();
   }
 
   function drawMinimap(state) {
@@ -223,17 +293,36 @@ export function createHud(doc) {
     crosshair.style.display = gunOut ? 'block' : 'none';
     // Car panel: name, condition bar, gear, big speed (also used for
     // the helicopter while flying).
+    // Car panel: name + condition, gear + big speed, class badge,
+    // fuel gauge and licence plate. The panel is bounded (max-width +
+    // wrapping weapon slots in index.html) so the gear and the speed
+    // can no longer run off the right edge of the frame.
+    const carType = state.carType || '';
     if (state.carName) {
       carEl.textContent = state.carName === 'HELICOPTER' ? 'HELICOPTER — AIRBORNE' : `${state.carName} — CONDITION ${Math.max(0, Math.round(state.carCondition ?? 100))}%`;
       gearEl.textContent = state.gear || '';
       speedEl.textContent = `${Math.round(Math.abs(state.speed) * 3.6)} km/h`;
+      carClassEl.textContent = CAR_CLASS[carType] || '';
+      carClassEl.classList.toggle('hidden', !CAR_CLASS[carType]);
+      plateLine.textContent = `${(state.carName || '').toUpperCase()} · PLATE ${PLATES[carType] || 'SOLM 000'}`;
+      plateLine.classList.remove('hidden');
+      const fuel = Math.max(0, Math.min(100, state.fuel ?? 100));
+      fuelFill.style.width = `${fuel}%`;
+      fuelFill.style.background = fuel < 20 ? '#e5534b' : '#ffb45e';
+      fuelText.textContent = `FUEL ${Math.round(fuel)}%`;
+      fuelRow.classList.remove('hidden');
     } else {
       carEl.textContent = state.inCar ? '' : 'ON FOOT';
       gearEl.textContent = '';
       speedEl.textContent = state.inCar ? `${Math.round(Math.abs(state.speed) * 3.6)} km/h` : '';
+      carClassEl.classList.add('hidden');
+      plateLine.classList.add('hidden');
+      fuelRow.classList.add('hidden');
     }
-    const mins = 18 * 60 + 42 + Math.floor(state.time / 10);
-    dayEl.textContent = `DAY 1 · ${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+    // Day-of-week clock, top right: DAY 1 is a Monday, so the weekday
+    // rolls MON → SUN as the in-game day counter advances.
+    const clock = gameClock(state.time);
+    dayEl.textContent = `${clock.weekday} ${clock.hhmm}`;
     clockEl.textContent = dayEl.textContent;
     // Mission panel: number + name, stage bar, next line, district tag.
     if (state.mission) {
@@ -286,6 +375,20 @@ export function createHud(doc) {
       policeEl.classList.add('hidden');
       traceText.textContent = state.stars > 0 ? `TRACE ${state.trace}%` : '';
     }
+    // Combat banner: the rivals-down counter while a clear mission is
+    // running, plus the active partner line when the game state carries
+    // one (state.partner { name, role, hp }); absent means hidden.
+    const rivals = state.rivalsTotal ? `RIVALS DOWN ${state.rivalsDown ?? 0}/${state.rivalsTotal}` : '';
+    const partner = state.partner ? `ACTIVE PARTNER: ${state.partner.name} — ${state.partner.hp} HP` : '';
+    if (rivals || partner) {
+      combatBanner.classList.remove('hidden');
+      rivalsLine.textContent = rivals;
+      rivalsLine.classList.toggle('hidden', !rivals);
+      partnerLine.textContent = partner;
+      partnerLine.classList.toggle('hidden', !partner);
+    } else {
+      combatBanner.classList.add('hidden');
+    }
     // Dialogue bar with a canvas-drawn portrait.
     const dlg = state.mission ? (DIALOGUE[state.mission.index]?.[state.mission.stage] ?? null) : null;
     if (dlg) {
@@ -300,5 +403,5 @@ export function createHud(doc) {
     drawMinimap(state);
   }
 
-  return { update, toast, popup };
+  return { update, toast, popup, showDamage };
 }

@@ -25,9 +25,10 @@ import { createCombat } from './combat.js';
 import { createMissions, MISSIONS } from './missions.js';
 import { createCollectibles } from './collectibles.js';
 import { createTaxi } from './taxi.js';
-import { createHud } from './hud.js';
+import { createHud, gameClock, drawPortrait } from './hud.js';
+import { createBriefing } from './briefing.js';
 import { createMap, districtAt } from './map.js';
-import { createProgression, tierForRep } from './progression.js';
+import { createProgression } from './progression.js';
 import { createGarage, GARAGE_POS } from './garage.js';
 import { readSave, writeSave, hasSave } from './save.js';
 import { createRenderer, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_BUSTED, SCREEN_WASTED, SCREEN_COMPLETE } from './render.js';
@@ -66,6 +67,7 @@ const garageHooks = {
     garageState.upgrades[type] = garageState.upgrades[type] || {};
     garageState.upgrades[type][kind] = (garageState.upgrades[type][kind] ?? 0) + 1;
     if (kind === 'respray' && police) police.setStars(0);
+    if (kind === 'respray') player.fuel = 100; // a respray fills the tank
     // A purchase takes effect at once, even if the player is sitting in
     // that car right now — no re-enter needed to feel the new engine.
     if (player.car && player.car.type === type) {
@@ -100,88 +102,47 @@ const cityMap = createMap(document, () => ({
   cruisers: police ? police.cruisers : [],
 }));
 
-// The title poster: canvas-drawn art (no external assets) — a golden
-// hour sky, the sun over the sea, the downtown skyline, palms, and a
-// sports-car silhouette under the logo.
-function drawTitlePoster() {
-  const poster = document.getElementById('poster');
-  if (!poster) return;
-  const c = poster.getContext('2d');
-  const W = poster.width;
-  const H = poster.height;
-  const sky = c.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#ff7e5f');
-  sky.addColorStop(0.5, '#feb47b');
-  sky.addColorStop(1, '#7b2d8e');
-  c.fillStyle = sky;
-  c.fillRect(0, 0, W, H);
-  // Sun disc + glow over the sea.
-  const glow = c.createRadialGradient(W * 0.72, H * 0.42, 4, W * 0.72, H * 0.42, 90);
-  glow.addColorStop(0, 'rgba(255,233,168,0.95)');
-  glow.addColorStop(1, 'rgba(255,233,168,0)');
-  c.fillStyle = glow;
-  c.fillRect(0, 0, W, H);
-  c.fillStyle = '#ffe9a8';
-  c.beginPath(); c.arc(W * 0.72, H * 0.42, 26, 0, Math.PI * 2); c.fill();
-  // Sea band.
-  c.fillStyle = '#2a6f8e';
-  c.fillRect(0, H * 0.62, W, H * 0.38);
-  // Skyline silhouettes.
-  c.fillStyle = '#2e1a33';
-  const towers = [[0.05, 0.30], [0.14, 0.42], [0.24, 0.26], [0.34, 0.38], [0.46, 0.22], [0.56, 0.36], [0.66, 0.28], [0.86, 0.40], [0.94, 0.30]];
-  for (const [fx, fh] of towers) {
-    c.fillRect(W * fx, H * 0.62 - H * fh, W * 0.07, H * fh);
+// The title backdrop is the real 3D world, not a poster: Jace stands
+// on the plaza next to a red sports car at golden hour, and the staged
+// camera frames them on the right of the screen while the title panel
+// sits on the left (the panel's gradient leaves the right side open).
+// The car is a parked prop — resetWorld rebuilds the world, so a new
+// game never inherits it.
+let titleCar = null;
+function stageTitleScene() {
+  if (titleCar) {
+    dynamicGroup.remove(titleCar.mesh);
+    traffic.parked = traffic.parked.filter((c) => c !== titleCar);
+    titleCar = null;
   }
-  // Lit windows — placed by a tiny seeded generator (LCG) rather than
-  // Math.random, so the poster is pixel-identical every time it shows.
-  let seed = 1234567;
-  const nextRand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  c.fillStyle = '#ffd21f';
-  for (let i = 0; i < 40; i += 1) {
-    c.fillRect(W * (0.06 + nextRand() * 0.9), H * (0.28 + nextRand() * 0.3), 3, 4);
+  // Park the player's car first, if they quit to the title mid-drive,
+  // so it stays enterable instead of orphaned in the world.
+  if (player.inCar) exitCar();
+  // Jace faces the camera (south-east); the lens sits south-east of
+  // the pair and aims north-west past them, so both land right of the
+  // title panel instead of behind it.
+  placePlayerOnFoot(-24, -26, 0.7);
+  titleCar = newCar('sports', -17, -26, Math.PI / 2, 0xc22730);
+  titleCar.parked = true;
+  dynamicGroup.add(titleCar.mesh);
+  traffic.parked.push(titleCar);
+  renderer.setSky(18.7);
+  stageCamera({ x: -12, y: 2.6, z: -12 }, { x: -30, y: 1.2, z: -26 });
+}
+
+// The title screen's character cards: canvas portraits (the same
+// drawPortrait the HUD dialogue bar uses) + one-line bios.
+const TITLE_CAST = [
+  { id: 'char-jace', colour: '#e08a2e', initial: 'J' },
+  { id: 'char-tess', colour: '#ffb45e', initial: 'T' },
+  { id: 'char-dario', colour: '#b48ae0', initial: 'D' },
+  { id: 'char-marisol', colour: '#7dd87d', initial: 'M' },
+];
+function paintTitlePortraits() {
+  for (const c of TITLE_CAST) {
+    const canvas = document.getElementById(c.id);
+    if (canvas) drawPortrait(canvas, c.colour, c.initial);
   }
-  // Police helicopter silhouette crossing the sky — the chase is never far.
-  c.fillStyle = '#2e1a33';
-  c.beginPath(); c.ellipse(W * 0.86, H * 0.16, 14, 5, 0, 0, Math.PI * 2); c.fill();
-  c.fillRect(W * 0.86 - 18, H * 0.16 - 8, 36, 2); // rotor
-  c.fillRect(W * 0.86 + 12, H * 0.16 - 1, 12, 2); // tail boom
-  // Palm silhouettes on the beach side.
-  c.strokeStyle = '#1c2f1a';
-  c.lineWidth = 4;
-  for (const fx of [0.08, 0.16]) {
-    c.beginPath(); c.moveTo(W * fx, H * 0.98); c.quadraticCurveTo(W * fx + 6, H * 0.8, W * fx + 14, H * 0.72); c.stroke();
-    c.beginPath(); c.moveTo(W * fx + 14, H * 0.72); c.lineTo(W * fx + 34, H * 0.66); c.moveTo(W * fx + 14, H * 0.72); c.lineTo(W * fx - 4, H * 0.64); c.stroke();
-  }
-  // Sports-car silhouette on the boulevard.
-  c.fillStyle = '#c22730';
-  c.beginPath();
-  c.moveTo(W * 0.38, H * 0.92);
-  c.lineTo(W * 0.42, H * 0.80);
-  c.lineTo(W * 0.52, H * 0.76);
-  c.lineTo(W * 0.60, H * 0.80);
-  c.lineTo(W * 0.66, H * 0.92);
-  c.closePath();
-  c.fill();
-  c.fillStyle = '#141414';
-  c.beginPath(); c.arc(W * 0.44, H * 0.92, 9, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(W * 0.60, H * 0.92, 9, 0, Math.PI * 2); c.fill();
-  // Logo text over the sky.
-  const grad = c.createLinearGradient(0, H * 0.08, 0, H * 0.34);
-  grad.addColorStop(0, '#ffe9a8');
-  grad.addColorStop(1, '#ffb45e');
-  c.fillStyle = grad;
-  c.font = 'bold 44px system-ui, sans-serif';
-  c.textAlign = 'center';
-  c.shadowColor = 'rgba(0,0,0,0.6)';
-  c.shadowBlur = 10;
-  c.fillText('SOLMAR BAY', W / 2, H * 0.30);
-  c.shadowBlur = 0;
-  // A dark band behind the tagline, so no tower edge strikes through it.
-  c.fillStyle = 'rgba(20,16,12,0.45)';
-  c.fillRect(0, H * 0.42, W, H * 0.12);
-  c.fillStyle = '#f5efe4';
-  c.font = 'italic 15px system-ui, sans-serif';
-  c.fillText('Six jobs. One city. Take it back.', W / 2, H * 0.50);
 }
 
 // What a mission stage needs from the world: spawn/remove its car and
@@ -211,6 +172,19 @@ const missionWorld = {
   toast(text) { hud.toast(text); },
 };
 const missions = createMissions(missionWorld);
+
+// The briefing card: shown when a story mission is picked on the
+// title screen; Space (or the button) starts the job.
+const briefing = createBriefing(document, {
+  onContinue(index) {
+    audio.unlock();
+    if (missions.start(index)) {
+      saveCheckpoint();
+      hud.toast(MISSIONS[index].briefing);
+      setScreen(SCREEN_PLAY);
+    }
+  },
+});
 
 const city = buildCity(createRandom(seed));
 scene.add(city.group);
@@ -270,7 +244,7 @@ scene.add(headlightSpot.target);
 const player = {
   x: city.spawn.x, z: city.spawn.z, y: 0, vy: 0,
   heading: city.spawn.heading, vx: 0, vz: 0,
-  inCar: false, car: null,
+  inCar: false, car: null, fuel: 100,
   health: PLAYER.maxHealth, armour: 0, cash: 500, stamina: 100,
   flash: 0, lastHitT: -10, grounded: true,
   get speed() { return this.inCar && this.car ? this.car.speed : Math.hypot(this.vx, this.vz); },
@@ -486,13 +460,34 @@ function setScreen(next) {
   document.getElementById('btn-continue').disabled = !hasSave();
   if (next === SCREEN_TITLE) {
     status.textContent = 'Solmar Bay. Press New Game to start.';
-    drawTitlePoster();
+    stageTitleScene();
+    paintTitlePortraits();
+    // Continue carries the real save summary: mission, cash,
+    // completion %, day + clock, and time played — a mid-progress save
+    // reads as played, not fresh. No save: greyed "NO SAVE YET".
     const save = readSave();
-    const summary = document.getElementById('save-summary');
     if (save) {
-      const tier = tierForRep(save.rep ?? 0);
-      summary.textContent = `Continue — Mission ${Math.min(save.mission + 1, 6)}/6 · $${Math.floor(save.cash).toLocaleString('en-US')} · REP ${tier.level} · ${tier.name}`;
-    } else summary.textContent = '';
+      // The title's mission list is built at boot from fresh progress;
+      // unlock it from the save so a returning player can pick any
+      // mission they have reached straight from the title screen.
+      missions.setUnlocked(save.mission ?? 0);
+      buildMissionList();
+    }
+    const summary = document.getElementById('save-summary');
+    const continueBtn = document.getElementById('btn-continue');
+    if (save) {
+      const clock = gameClock(save.timePlayed ?? save.time ?? 0);
+      const pct = Math.round(((save.missionsDone ?? 0) / 6) * 80 + ((save.drops?.length ?? 0) / 20) * 20);
+      const missionNo = Math.min((save.mission ?? 0) + 1, 6);
+      const cash = Math.floor(save.cash).toLocaleString('en-US');
+      summary.textContent = `CONTINUE — MISSION ${missionNo}/6 · $${cash} · ${pct}% · DAY ${clock.day}, ${clock.hhmm} · ${formatTime(save.timePlayed ?? save.time ?? 0)} PLAYED`;
+      summary.classList.remove('muted');
+      continueBtn.textContent = `Continue — Mission ${missionNo}/6 · $${cash} · ${pct}%`;
+    } else {
+      summary.textContent = 'CONTINUE — NO SAVE YET';
+      summary.classList.add('muted');
+      continueBtn.textContent = 'Continue — No save yet';
+    }
   }
 }
 
@@ -532,6 +527,7 @@ function resetWorld() {
   player.heading = city.spawn.heading;
   player.inCar = false;
   player.car = null;
+  player.fuel = 100;
   player.health = PLAYER.maxHealth;
   player.armour = 0;
   player.cash = 500;
@@ -539,6 +535,7 @@ function resetWorld() {
   player.flash = 0;
   player.lastHitT = -10;
   prevStars = 0;
+  titleCar = null; // the title-scene prop car dies with the old world
   missions.quitToFreeRoam();
   time = 0;
   staged = false;
@@ -651,6 +648,13 @@ function stepSim(dt, inputOverride, ambient = false) {
   // The sky follows the in-game clock: 10 seconds of play is one game
   // minute, starting at 18:42 golden hour and sliding toward dusk.
   renderer.setSky((18.7 + time / 600) % 24);
+
+  // Fuel burns with distance driven (about 5 km a tank); a respray at
+  // Tess's garage fills it again. Fuel is session state — a fresh load
+  // starts with a full tank.
+  if (player.inCar && player.car) {
+    player.fuel = Math.max(0, player.fuel - Math.abs(player.car.speed) * dt * 0.02);
+  }
 
   if (!ambient) stepPlayer(dt, inputOverride);
   else {
@@ -1003,6 +1007,21 @@ function updateHud(dt) {
   const car = player.inCar && player.car ? player.car : null;
   const absSpeed = car ? Math.abs(car.speed) : 0;
   const gear = !car ? '' : car.speed < -0.5 ? 'R' : absSpeed < 5 ? 'G1' : absSpeed < 12 ? 'G2' : absSpeed < 20 ? 'G3' : absSpeed < 28 ? 'G4' : 'G5';
+  // Combat banner: mission rivals down / total, and Tess's crew as the
+  // active partner once the plaza hold starts (mission 4, stage 2 —
+  // the fiction is that her crew arrives to hold the plaza with you).
+  let rivalsDown = 0;
+  let rivalsTotal = 0;
+  if (combat && missions.current >= 0) {
+    const crew = combat.enemies.filter((e) => e.tag === 'mission');
+    if (crew.length > 0) {
+      rivalsTotal = crew.length;
+      rivalsDown = crew.filter((e) => e.dead).length;
+    }
+  }
+  const partner = missions.current === 3 && missions.stage === 1
+    ? { name: "TESS'S CREW", role: 'BACKUP', hp: 100 }
+    : null;
   progression.stats.timePlayed = time;
   progression.stats.dropsGot = collectibles.collectedCount;
   hud.update(dt, {
@@ -1035,6 +1054,11 @@ function updateHud(dt) {
     mission,
     rep: progression.progress,
     carName: car ? car.spec.name : (heli && heli.isFlying ? 'HELICOPTER' : ''),
+    carType: car ? car.type : (heli && heli.isFlying ? 'helicopter' : ''),
+    fuel: player.fuel,
+    rivalsDown,
+    rivalsTotal,
+    partner,
     carCondition: car ? Math.max(0, 100 - car.damage * 0.8) : 100,
     gear,
     radioTrack: RADIO_TRACKS[Math.floor(time / 45) % RADIO_TRACKS.length],
@@ -1051,11 +1075,10 @@ function buildMissionList() {
     btn.disabled = i > missions.unlocked;
     btn.addEventListener('click', () => {
       audio.unlock();
-      if (missions.start(i)) {
-        saveCheckpoint();
-        hud.toast(m.briefing);
-        setScreen(SCREEN_PLAY);
-      }
+      // Picking a mission opens its briefing card first; the card's
+      // Continue (Space / button) starts the job. A checkpoint retry
+      // skips the card — it is a continuation, not a fresh start.
+      briefing.show(MISSIONS[i], i);
     });
     list.appendChild(btn);
   });
@@ -1221,6 +1244,9 @@ window.__solmar = {
   get garageState() { return garageState; },
   get cityMap() { return cityMap; },
   openMap, closeMap, openGarage, closeGarage,
+  get briefing() { return briefing; },
+  openBriefing: (index) => briefing.show(MISSIONS[index], index),
+  showDamage: (x, y, amount, label) => hud.showDamage(x, y, amount, label),
   get checkpoint() { return checkpoint; },
   retryFromCheckpoint,
   // Fixed-step driver for the play-test tooling: step the sim with an
