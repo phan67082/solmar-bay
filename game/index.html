@@ -152,21 +152,35 @@
   #map-save-slot { font-size: 13px; font-weight: 800; color: #7dd87d; padding: 6px; }
   /* Full-screen map + garage overlays: solid background, so the HUD
      underneath cannot ghost through the map screen. */
-  .overlay { position: fixed; inset: 0; z-index: 20; background: #0d0a08; display: flex; flex-direction: column; padding: 16px 24px; overflow-y: auto; }
-  .overlay h2 { margin: 0 0 4px; color: #ffb45e; letter-spacing: 2px; }
-  .overlay .sub { color: #cbb98f; font-size: 13px; margin-bottom: 12px; }
-  .map-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-  .map-tab { padding: 8px 18px; font-weight: 700; background: #3a3a40; color: #f5efe4; border: 1px solid rgba(245,239,228,0.3); border-radius: 8px; cursor: pointer; }
+  .overlay { position: fixed; inset: 0; z-index: 20; background: #0d0a08; display: flex; flex-direction: column; padding: 10px 16px; overflow-y: auto; }
+  .overlay h2 { margin: 0 0 4px; color: #ffb45e; letter-spacing: 2px; font-size: 20px; }
+  .overlay .sub { color: #cbb98f; font-size: 13px; margin-bottom: 6px; }
+  .map-tabs { display: flex; gap: 8px; margin-bottom: 6px; }
+  .map-tab { padding: 6px 18px; font-weight: 700; background: #3a3a40; color: #f5efe4; border: 1px solid rgba(245,239,228,0.3); border-radius: 8px; cursor: pointer; }
   .map-tab.active { background: #ffb45e; color: #1a120c; }
-  .map-cols { display: flex; gap: 18px; flex: 1; min-height: 0; }
+  .map-cols { display: flex; gap: 12px; flex: 1; min-height: 0; }
   .map-side { width: 300px; flex: none; overflow-y: auto; }
   .map-side h3 { color: #ffd21f; font-size: 14px; margin: 10px 0 6px; letter-spacing: 1px; }
   .map-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 5px 6px; border-bottom: 1px solid rgba(245,239,228,0.12); }
+  /* The right LEGEND/STATS column is compacted so all 24 rows fit
+     the ~570 px column height: 11 px rows, tight headers, and the
+     Skills row abbreviated (DRV/SHT/STA would be cryptic; Drive /
+     Shoot / Stam still reads, and the STATS tab's SKILLS panel
+     carries the full names + XP). Nothing is removed — the fold
+     used to hide the last four stats rows. */
+  .map-side.compact .map-row { font-size: 11px; padding: 2px 4px; }
+  .map-side.compact h3 { margin: 6px 0 4px; }
   .map-row-name { font-weight: 700; }
   .map-row-pay { color: #7dd87d; font-weight: 700; }
   .map-row-state { color: #cbb98f; }
-  #map-canvas { flex: 1; min-height: 0; background: #101820; border: 1px solid rgba(245,239,228,0.3); border-radius: 8px; }
-  .overlay button.close { align-self: flex-end; padding: 8px 18px; font-weight: 700; background: #ffb45e; border: none; border-radius: 8px; cursor: pointer; color: #1a120c; }
+  /* Fixed canvas size, never flex-grown: the old flex:1 canvas plus
+     260 + 300 px columns plus padding/gaps totalled 1236 px against
+     1232 px of content width, so the right LEGEND/STATS column and
+     the Close button were cut off at the 1280 px frame edge. Now
+     260 + 12 + 600 + 12 + 300 + 32 padding = 1216 px, fully inside,
+     and the 540 px height leaves the Close button on-screen. */
+  #map-canvas { flex: none; width: 600px; height: 540px; background: #101820; border: 1px solid rgba(245,239,228,0.3); border-radius: 8px; }
+  .overlay button.close { align-self: flex-end; margin-top: 6px; padding: 8px 18px; font-weight: 700; background: #ffb45e; border: none; border-radius: 8px; cursor: pointer; color: #1a120c; }
   .garage-cols { display: flex; gap: 18px; }
   .garage-col { flex: 1; }
   .garage-col h3 { color: #ffd21f; font-size: 14px; letter-spacing: 1px; }
@@ -298,8 +312,8 @@
       <h3>SAVE</h3>
       <div id="map-save-slot">SAVE SLOT 1 — 0% COMPLETE</div>
     </div>
-    <canvas id="map-canvas" width="640" height="520"></canvas>
-    <div class="map-side">
+    <canvas id="map-canvas" width="600" height="540"></canvas>
+    <div class="map-side compact">
       <h3>LEGEND</h3>
       <div id="map-legend"></div>
       <h3>STATS</h3>

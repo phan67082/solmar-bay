@@ -272,6 +272,42 @@ export function createTraffic(rng, city, scene) {
     cars.push(car);
   }
 
+  // Boulevard extras: the beachfront boulevard (x = -360) is the
+  // chase cover's road, and the uniform spread above leaves it
+  // nearly empty — about one car per 26 road-lines. Six more cars
+  // are pinned to it, in bands the staged chase never reaches:
+  // four oncoming (southbound, x = -363, the far lane from the
+  // player's x = -357) and two northbound far ahead (z <= -60,
+  // 75 m+ past where the 3 s autopilot ends), so none can block the
+  // autopilot or overlap the player's car — traffic is not solid to
+  // the player (collideCar checks buildings only), but an overlap
+  // in the frozen frame would still read as a crash. Bands are
+  // 40 m+ apart, so the extras never queue on each other either.
+  const boulevardBands = [
+    { dir: 1, z0: -280, z1: -220 }, // oncoming
+    { dir: 1, z0: -200, z1: -150 }, // oncoming
+    { dir: 1, z0: -120, z1: -70 }, // oncoming
+    { dir: 1, z0: -50, z1: -10 }, // oncoming
+    { dir: -1, z0: -100, z1: -60 }, // northbound, far ahead
+    { dir: -1, z0: -180, z1: -140 }, // northbound, far ahead
+  ];
+  for (const band of boulevardBands) {
+    const type = pick(rng, types);
+    const spec = CAR_TYPES[type];
+    const lane = band.dir === 1 ? -3 : 3;
+    const x = -360 + lane;
+    const z = range(rng, band.z0, band.z1);
+    const heading = band.dir === 1 ? 0 : Math.PI;
+    const car = newCar(type, x, z, heading, pick(rng, spec.colours));
+    car.ai = true;
+    car.axis = 'z';
+    car.dir = band.dir;
+    car.cruise = range(rng, 9, 13);
+    car.speed = car.cruise;
+    scene.add(car.mesh);
+    cars.push(car);
+  }
+
   for (let i = 0; i < PARKED_COUNT; i += 1) {
     // The first parked car is always a taxi (the taxi rank): fares need
     // a cab the player can actually find.

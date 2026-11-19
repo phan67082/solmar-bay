@@ -19,13 +19,13 @@ function shade(hex, n) {
 
 export const DISTRICTS = [
   { name: 'BEACHFRONT', tag: 'Sun, sand and fast cars on the strip', x0: -396, x1: -360, z0: -396, z1: 400, colour: '#e0c48f' },
-  { name: 'DOWNTOWN', tag: 'Glass towers and the bank', x0: -180, x1: 180, z0: -180, z1: 60, colour: '#7d8aa8', lx: 100, lz: -130 },
+  { name: 'DOWNTOWN', tag: 'Glass towers and the bank', x0: -180, x1: 180, z0: -180, z1: 60, colour: '#7d8aa8', lx: 160, lz: -165 },
   { name: 'OLD TOWN', tag: 'Narrow streets, old money', x0: -360, x1: -180, z0: -360, z1: -60, colour: '#a89a80' },
   { name: 'PLAZA', tag: 'The fountain at the heart of the bay', x0: -60, x1: 0, z0: -60, z1: 0, colour: '#c9b489' },
   { name: 'HILLSIDE', tag: 'Winding roads above the bay', x0: 180, x1: 396, z0: -360, z1: -60, colour: '#7fae62' },
   { name: 'MARINA', tag: 'Yachts, chop shops and salt air', x0: -360, x1: 120, z0: 300, z1: 400, colour: '#4f8aa8' },
   { name: 'PORT', tag: "Vane's docks — keep your head down", x0: 120, x1: 396, z0: 240, z1: 400, colour: '#8a6f4f' },
-  { name: 'INDUSTRIAL', tag: 'Warehouses and container yards', x0: 180, x1: 396, z0: 60, z1: 240, colour: '#6e6e72' },
+  { name: 'INDUSTRIAL', tag: 'Warehouses and container yards', x0: 180, x1: 396, z0: 60, z1: 240, colour: '#6e6e72', lx: 215, lz: 100 },
 ];
 
 export function districtAt(x, z) {
@@ -285,6 +285,10 @@ export function createMap(doc, getState) {
     const statsHtml =
       `<div class="map-row"><span>Cash</span><b>$${Math.floor(s.cash).toLocaleString('en-US')}</b></div>` +
       `<div class="map-row"><span>REP</span><b>${p.tier.level} · ${p.tier.name} — ${p.rep} REP</b></div>` +
+      // Skills sit third, not last: the right column scrolls, and the
+      // last rows can fall below the fold — the fold should only ever
+      // hide the least important row (Cash drops), never the pips.
+      `<div class="map-row"><span>Skills</span><b>Drive ${'●'.repeat(p.skills.Driving)}${'○'.repeat(5 - p.skills.Driving)} · Shoot ${'●'.repeat(p.skills.Shooting)}${'○'.repeat(5 - p.skills.Shooting)} · Stam ${'●'.repeat(p.skills.Stamina)}${'○'.repeat(5 - p.skills.Stamina)}</b></div>` +
       `<div class="map-row"><span>Completion</span><b>${s.completion}%</b></div>` +
       `<div class="map-row"><span>Save slot</span><b>SAVE SLOT 1 — ${s.completion}% COMPLETE</b></div>` +
       `<div class="map-row"><span>Time played</span><b>${fmt(s.timePlayed)}</b></div>` +
@@ -295,8 +299,7 @@ export function createMap(doc, getState) {
       `<div class="map-row"><span>Deliveries</span><b>${s.deliveriesDone ?? 0} done · $${(s.deliveryEarned ?? 0).toLocaleString('en-US')}</b></div>` +
       `<div class="map-row"><span>Street races</span><b>${s.racesWon ?? 0}/3 won</b></div>` +
       `<div class="map-row"><span>Stunt jumps</span><b>${s.stuntsDone ?? 0}/3 cleared</b></div>` +
-      `<div class="map-row"><span>Cash drops</span><b>${s.dropsGot}/20</b></div>` +
-      `<div class="map-row"><span>Skills</span><b>Driving ${'●'.repeat(p.skills.Driving)}${'○'.repeat(5 - p.skills.Driving)} · Shooting ${'●'.repeat(p.skills.Shooting)}${'○'.repeat(5 - p.skills.Shooting)} · Stamina ${'●'.repeat(p.skills.Stamina)}${'○'.repeat(5 - p.skills.Stamina)}</b></div>`;
+      `<div class="map-row"><span>Cash drops</span><b>${s.dropsGot}/20</b></div>`;
     statsEl.innerHTML = statsHtml;
     const dup = doc.getElementById('map-stats-dup');
     if (dup) dup.innerHTML = statsHtml;

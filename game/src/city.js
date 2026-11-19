@@ -5,36 +5,123 @@
 // lights, and the named places missions and shots need.
 import * as THREE from 'three';
 import { blockCentres, roadLines } from './config.js';
-import { pick, range, intRange } from './random.js';
+import { pick, range, intRange, createRandom } from './random.js';
 
-const BUILDING_COLOURS = [0xc9a06a, 0xb98a6e, 0x9aa7b5, 0xd9c9a8, 0x8f7d6b, 0x7d94a6, 0xc2b49a, 0xa88f7a];
+const BUILDING_COLOURS = [0xc9a06a, 0xb98a6e, 0x9aa7b5, 0xd9c9a8, 0x8f7d6b, 0x7d94a6, 0xc2b49a, 0xa88f7a, 0xb4653a, 0x4a7d7a, 0x9a5a44, 0x8a9a6a, 0xe6dcc0, 0x6a7d94];
 
 // A facade texture: coloured wall with a grid of windows, some lit warm.
+// Every colour gets its own variant — 4–7 window columns, 8–13 rows,
+// its own lit ratio, floor-slab lines, a vertical accent stripe on
+// some, balcony doors on some rows — so two buildings of different
+// colours never repeat the same grid, and a big wall reads as floors
+// of windows instead of one flat tan slab with a 5x10 stamp. The
+// ground floor carries a shopfront (striped awning + sign band +
+// doorway) or a lobby (dark band + lit entrance), and the roofline
+// gets a cornice. The variant rng is a separate fixed-seed stream
+// (createRandom), so texture work never consumes the city's main rng
+// and the building layout, roads and colliders stay byte-identical.
 function facadeTexture(rng, base) {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
+  const cols = 4 + Math.floor(rng() * 4); // 4..7
+  const rows = 8 + Math.floor(rng() * 6); // 8..13
+  const litRatio = 0.3 + rng() * 0.25;
+  const shop = rng() < 0.55;
+  const stripe = rng() < 0.4;
+  const balcony = rng() < 0.5;
+  const awnColour = pick(rng, ['#c22730', '#1f6fb2', '#2e7d4f', '#e08a2e', '#7b2d8e']);
   ctx.fillStyle = `#${base.toString(16).padStart(6, '0')}`;
   ctx.fillRect(0, 0, 128, 256);
+  // Subtle per-column shade variation: the wall is not one flat fill.
+  for (let col = 0; col < cols; col += 1) {
+    if ((col % 2) === 0) continue;
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect((col * 128) / cols, 0, 128 / cols, 256);
+  }
+  // Vertical accent stripe down one edge on some variants.
+  if (stripe) {
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(0, 0, 6, 256);
+    ctx.fillStyle = 'rgba(0,0,0,0.10)';
+    ctx.fillRect(6, 0, 2, 256);
+  }
+  // Cornice lines under the roof.
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(0, 10, 128, 3);
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.fillRect(0, 0, 128, 10);
-  for (let row = 0; row < 10; row += 1) {
-    for (let col = 0; col < 5; col += 1) {
-      const lit = rng() < 0.45;
+  const top = 16;
+  const bottom = shop ? 214 : 222;
+  const cellW = 128 / cols;
+  const cellH = (bottom - top) / rows;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const wx = 4 + col * cellW;
+      const wy = top + row * cellH + 2;
+      const ww = cellW - 8;
+      const wh = cellH - 5;
+      const lit = rng() < litRatio;
+      // Dark frame, then the lit or dark pane inside it.
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(wx - 1, wy - 1, ww + 2, wh + 2);
       ctx.fillStyle = lit ? '#ffd98a' : '#2c3542';
-      ctx.fillRect(10 + col * 23, 18 + row * 23, 15, 16);
+      ctx.fillRect(wx, wy, ww, wh);
+    }
+    // Floor-slab line under each row: the wall reads as storeys.
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.fillRect(0, top + (row + 1) * cellH - 1, 128, 1);
+  }
+  // Balcony doors, second pass so they overdraw cleanly: every third
+  // row on some variants gets a double-width opening with a railing
+  // line under it, instead of two separate windows.
+  if (balcony) {
+    for (let row = 1; row < rows; row += 3) {
+      for (let col = 0; col < cols - 1; col += 2) {
+        const wx = 4 + col * cellW;
+        const wy = top + row * cellH + 2;
+        const ww = cellW * 2 - 8;
+        const wh = cellH - 5;
+        const lit = rng() < litRatio;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(wx - 1, wy - 1, ww + 2, wh + 2);
+        ctx.fillStyle = lit ? '#ffe9b0' : '#35424f';
+        ctx.fillRect(wx, wy, ww, wh);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(wx, wy + wh + 1, ww, 2);
+      }
     }
   }
-  // Street level: a dark shopfront band with one lit doorway, plus a
-  // pale cornice line under the roof — the box reads as a building with
-  // a ground floor instead of a flat slab.
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(0, 228, 128, 28);
-  ctx.fillStyle = '#ffd98a';
-  ctx.fillRect(56, 232, 16, 24);
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillRect(0, 12, 128, 3);
+  if (shop) {
+    // Street level: striped awning, a coloured sign band, a lit
+    // doorway and shop windows — the box reads as a building with
+    // a ground floor instead of a flat slab.
+    for (let s = 0; s < 8; s += 1) {
+      ctx.fillStyle = s % 2 === 0 ? awnColour : 'rgba(245,239,228,0.9)';
+      ctx.fillRect(s * 16, 214, 16, 8);
+    }
+    ctx.fillStyle = awnColour;
+    ctx.fillRect(0, 222, 128, 12);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    for (let s = 0; s < 5; s += 1) ctx.fillRect(10 + s * 24, 226, 14, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 234, 128, 22);
+    ctx.fillStyle = '#ffd98a';
+    ctx.fillRect(56, 236, 16, 20);
+    ctx.fillStyle = '#2c3542';
+    ctx.fillRect(8, 238, 34, 14);
+    ctx.fillRect(86, 238, 34, 14);
+  } else {
+    // Lobby: dark band, a centred lit entrance, sidelights.
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 222, 128, 34);
+    ctx.fillStyle = '#ffd98a';
+    ctx.fillRect(54, 228, 20, 28);
+    ctx.fillStyle = '#2c3542';
+    ctx.fillRect(10, 232, 30, 16);
+    ctx.fillRect(88, 232, 30, 16);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -65,7 +152,19 @@ export function buildCity(rng) {
   const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
   const dummy = new THREE.Object3D();
 
-  const facadeMats = BUILDING_COLOURS.map((c) => new THREE.MeshLambertMaterial({ map: facadeTexture(rng, c) }));
+  // Facade variants come from their own fixed-seed stream, so the
+  // city's main rng — and with it every building's size and position
+  // — is untouched by the texture work.
+  const texRng = createRandom(0x5eed);
+  const facadeMats = BUILDING_COLOURS.map((c) => new THREE.MeshLambertMaterial({ map: facadeTexture(texRng, c) }));
+  // Shopfront signs, made once and shared: eight named shops on
+  // coloured boards, picked per building by a position hash (no rng).
+  const SHOP_SIGNS = [
+    ['TACOS', '#c22730', '#ffe9a8'], ['CAFE SOL', '#1f6fb2', '#f5f5f0'],
+    ['PIZZA', '#2e7d4f', '#ffe9a8'], ['BAR LA LUNA', '#7b2d8e', '#ffe9a8'],
+    ['FARMACIA', '#2e7d4f', '#f5f5f0'], ['PANADERIA', '#e08a2e', '#1a120c'],
+    ['LAVANDERIA', '#1f6fb2', '#ffe9a8'], ['SOUVENIRS', '#b4653a', '#ffe9a8'],
+  ].map(([text, bg, fg]) => new THREE.MeshBasicMaterial({ map: signTexture(text, bg, fg) }));
   const roofMat = new THREE.MeshLambertMaterial({ color: 0x4a4440 });
   const roadMat = new THREE.MeshLambertMaterial({ color: 0x3a3a40 });
   const walkMat = new THREE.MeshLambertMaterial({ color: 0x8d8578 });
@@ -211,19 +310,47 @@ export function buildCity(rng) {
         const z = bz + oz;
         // District palettes: pastel beachfront, warm hillside, cool
         // glass downtown, mixed elsewhere — the city reads district by
-        // district instead of one brown repeat.
+        // district instead of one brown repeat. The new colours
+        // (8–13: terracotta, teal, brick, sage, cream, slate blue)
+        // widen each palette so neighbouring blocks stop matching.
         const regionMats = bx < -180
-          ? [facadeMats[3], facadeMats[5], facadeMats[2]]
+          ? [facadeMats[3], facadeMats[5], facadeMats[2], facadeMats[12], facadeMats[9]]
           : (bx >= 210 && bz <= -210)
-            ? [facadeMats[0], facadeMats[4], facadeMats[6]]
+            ? [facadeMats[0], facadeMats[4], facadeMats[6], facadeMats[8], facadeMats[11]]
             : (Math.abs(bx) <= 90 && Math.abs(bz) <= 90)
-              ? [facadeMats[2], facadeMats[5], facadeMats[1]]
+              ? [facadeMats[2], facadeMats[5], facadeMats[1], facadeMats[13], facadeMats[3]]
               : facadeMats;
         const mat = pick(rng, regionMats);
-        const b = box(w, h, d, mat, x, h / 2, z);
+        // Sides carry the facade texture; the top is plain roof and
+        // the underside dark — the window grid no longer wraps over
+        // the roof, which the high chase camera used to see.
+        const bGeo = new THREE.BoxGeometry(w, h, d);
+        const b = new THREE.Mesh(bGeo, [mat, mat, roofMat, darkMat, mat, mat]);
+        b.position.set(x, h / 2, z);
         b.castShadow = true;
+        b.receiveShadow = true;
+        group.add(b);
         box(w + 0.6, 0.5, d + 0.6, roofMat, x, h + 0.25, z);
         addCollider(x, z, w / 2 + 0.4, d / 2 + 0.4);
+        // Rooftop penthouse on tall towers, set back to the
+        // south-west corner so it never swallows the water tank
+        // (north-east), antenna (centre) or AC box (north-west):
+        // the skyline gains a second storey instead of flat slabs.
+        if (h >= 30) {
+          const ph = box(w * 0.45, 3, d * 0.45, darkMat, x - w / 4, h + 2, z + d / 4);
+          ph.castShadow = false;
+        }
+        // Shopfront sign board on the south face of about half the
+        // low buildings, picked by a position hash (no rng): the
+        // street reads as named shops, not blank walls. It sits
+        // above the awning line (y 5.2) so the awning never covers
+        // it, and reuses one of eight shared sign textures.
+        if (h < 24 && ((Math.round((bx + 360) / 60) + Math.round((bz + 360) / 60) + i) % 2) === 0) {
+          const signIdx = (Math.round((bx + 360) / 60) * 3 + Math.round((bz + 360) / 60) * 5 + i * 7) % SHOP_SIGNS.length;
+          const shopSign = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.5), SHOP_SIGNS[signIdx]);
+          shopSign.position.set(x, 5.2, z + d / 2 + 0.15);
+          group.add(shopSign);
+        }
         // Rooftop props.
         const roll = rng();
         if (roll < 0.3) {
@@ -510,7 +637,9 @@ export function buildCity(rng) {
   ramp3Mesh.castShadow = false;
 
   // --- distant skyline ring and the hillside --------------------------------
-  const skylineMat = new THREE.MeshLambertMaterial({ color: 0x6b5a52 });
+  // The ring towers wear the same facade materials (picked by index,
+  // no rng) instead of one flat grey: from the boulevard they used
+  // to read as blank slabs on the horizon.
   for (let i = 0; i < 22; i += 1) {
     const ang = (i / 22) * Math.PI * 2;
     const r = 480 + rng() * 60;
@@ -518,7 +647,7 @@ export function buildCity(rng) {
     const z = Math.sin(ang) * r;
     if (x < -420) continue; // the sea stays open to the west
     const h = 40 + rng() * 70;
-    const t = box(range(rng, 18, 30), h, range(rng, 18, 30), skylineMat, x, h / 2, z);
+    const t = box(range(rng, 18, 30), h, range(rng, 18, 30), facadeMats[i % facadeMats.length], x, h / 2, z);
     t.castShadow = false;
   }
   const hill = new THREE.Mesh(new THREE.ConeGeometry(120, 55, 12), new THREE.MeshLambertMaterial({ color: 0x7d6b52 }));

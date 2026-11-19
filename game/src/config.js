@@ -48,9 +48,11 @@ export const CAR_TYPES = {
 // A busier city for the polished build: more traffic on the roads,
 // more parked cars at the kerbs, more pedestrians on the sidewalks.
 // (Counts only — the seeded RNG in the world builders is untouched.)
-export const TRAFFIC_COUNT = 20;
-export const PARKED_COUNT = 20;
-export const PED_COUNT = 36;
+// v3 world layer: traffic 28 + 6 boulevard extras in vehicles.js,
+// pedestrians 48 + 12 plaza/boulevard clusters in pedestrians.js.
+export const TRAFFIC_COUNT = 28;
+export const PARKED_COUNT = 26;
+export const PED_COUNT = 48;
 export const CASH_DROP_COUNT = 20;
 
 export const WEAPONS = {

@@ -48,6 +48,48 @@ export function createPedestrians(rng, scene) {
     });
   }
 
+  // Plaza + boulevard clusters: the uniform spread above leaves the
+  // two places the screenshots actually look at — the plaza ring
+  // and the beachfront boulevard — nearly empty. Twelve more
+  // walkers are pinned to their sidewalks (offset 7.75 from the
+  // road line, exactly where the random walkers walk): six along
+  // the boulevard, six on the four roads ringing the plaza block.
+  // They use the same walk/turn update, so they drift away over
+  // minutes of play but hold their ground through the few seconds
+  // of sim a screenshot stages. None walks on the plaza disc
+  // itself, so the title lens (inside the plaza block, looking
+  // west) never has a walker cross in front of Jace and the car.
+  const clusters = [
+    { axis: 'z', line: -360, side: 1, a0: -300, a1: 300 },
+    { axis: 'z', line: -360, side: -1, a0: -300, a1: 300 },
+    { axis: 'x', line: -60, side: 1, a0: -60, a1: 0 },
+    { axis: 'x', line: -60, side: -1, a0: -60, a1: 0 },
+    { axis: 'z', line: -60, side: 1, a0: -60, a1: 0 },
+    { axis: 'z', line: -60, side: -1, a0: -60, a1: 0 },
+    { axis: 'x', line: 0, side: 1, a0: -60, a1: 0 },
+    { axis: 'x', line: 0, side: -1, a0: -60, a1: 0 },
+    { axis: 'z', line: 0, side: 1, a0: -60, a1: 0 },
+    { axis: 'z', line: 0, side: -1, a0: -60, a1: 0 },
+    { axis: 'z', line: -360, side: 1, a0: -300, a1: 300 },
+    { axis: 'z', line: -360, side: -1, a0: -300, a1: 300 },
+  ];
+  for (const c of clusters) {
+    const along = range(rng, c.a0, c.a1);
+    const dir = rng() < 0.5 ? 1 : -1;
+    const x = c.axis === 'x' ? along : c.line + c.side * 7.75;
+    const z = c.axis === 'x' ? c.line + c.side * 7.75 : along;
+    const mesh = makePedMesh(pick(rng, SHIRT_COLOURS), pick(rng, SKIN_COLOURS));
+    mesh.position.set(x, 0, z);
+    scene.add(mesh);
+    peds.push({
+      x, z, axis: c.axis, dir, side: c.side, line: c.line,
+      speed: range(rng, 0.9, 1.6),
+      walkSpeed: range(rng, 0.9, 1.6),
+      heading: c.axis === 'x' ? (dir === 1 ? Math.PI / 2 : -Math.PI / 2) : (dir === 1 ? 0 : Math.PI),
+      mesh, panic: 0, fleeX: 0, fleeZ: 0, bob: rng() * Math.PI * 2,
+    });
+  }
+
   function update(dt) {
     for (const p of peds) {
       if (p.panic > 0) {
